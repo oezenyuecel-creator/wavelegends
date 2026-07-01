@@ -15,7 +15,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hint">HALTEN = tauchen &amp; abheben · loslassen = abspringen · in der Luft HALTEN = Flip</div>
+<div id="hint">TIPPEN = springen · HALTEN = Welle abtauchen (Speed) &amp; am Kamm LOSLASSEN = hoher Absprung · in der Luft HALTEN = Flip</div>
 <script>
 "use strict";
 /* ============================================================================
@@ -439,41 +439,48 @@ function updatePlay(dt){
     player.y=surfaceY(player.x);
     player.x+=player.vx*dt;
   } else if(!player.air){
-    // grounded
-    const slope=surfaceSlope(player.x);
-    const ang=Math.atan(slope);
-    // slope accel: downhill (slope>0) speeds up
-    let acc = 2600*Math.sin(ang);
-    if(player.holding){
-      if(slope>0) acc*=1.9;        // pump down the face
-      else acc*=0.35;              // reduce uphill loss
-    } else {
-      if(slope>0) acc*=0.9;
-    }
-    player.vx += acc*dt;
-    player.vx -= player.vx*0.18*dt; // drag
-    if(player.turbo>0) player.vx += 1400*dt;
-    player.vx=clamp(player.vx, minV, maxV*(player.turbo>0?1.35:1));
-    // advance & follow surface, detect launch
-    const nx=player.x+player.vx*dt;
-    const prevY=player.y;
-    const ny=surfaceY(nx);
-    const vyFollow=(ny-prevY)/dt;
-    const vyFree=player.vy+G*dt;
-    if(vyFollow > vyFree + 30){
-      // surface drops away -> launch
+    // ----- grounded -----
+    if(player.prevHold && !player.holding){
+      // LOSLASSEN = abspringen: Sprung-Impuls, skaliert mit Speed (Pumpen lohnt sich)
+      const slope=surfaceSlope(player.x);
+      const pop = 320 + player.vx*0.34;
       player.air=true;
-      player.vy=surfaceSlope(player.x)*player.vx;
-      if(player.holding){ player.vy -= 360*B.air; } // release-pop for bigger air
+      player.vy = slope*player.vx - pop*B.air;
       player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult;
-      player.angle=Math.atan(surfaceSlope(player.x));
-      player.x=nx;
+      player.angle=Math.atan(slope);
       Audio.sfx.jump();
+      spray(sx(player.x)+cam.x, player.y, 1, 8, P.foam);
     } else {
-      player.x=nx; player.y=ny; player.vy=vyFollow;
-      player.angle=lerp(player.angle, Math.atan(slope), dt*12);
-      // ride spray
-      if(player.vx>600 && Math.random()<0.4){ spray(sx(player.x)+cam.x, player.y, 1, 1, P.foam); }
+      const slope=surfaceSlope(player.x);
+      const ang=Math.atan(slope);
+      // slope accel: downhill (slope>0) speeds up
+      let acc = 2600*Math.sin(ang);
+      if(player.holding){ if(slope>0) acc*=1.9; else acc*=0.35; } else { if(slope>0) acc*=0.9; }
+      player.vx += acc*dt;
+      player.vx -= player.vx*0.18*dt; // drag
+      if(player.turbo>0) player.vx += 1400*dt;
+      player.vx=clamp(player.vx, minV, maxV*(player.turbo>0?1.35:1));
+      // advance & follow surface, detect launch
+      const nx=player.x+player.vx*dt;
+      const prevY=player.y;
+      const ny=surfaceY(nx);
+      const vyFollow=(ny-prevY)/dt;
+      const vyFree=player.vy+G*dt;
+      if(vyFollow > vyFree + 30){
+        // natürlicher Absprung, wenn die Welle unter dir wegkippt
+        player.air=true;
+        player.vy=surfaceSlope(player.x)*player.vx;
+        if(player.holding){ player.vy -= 220*B.air; } // durchgepumpt = etwas mehr Air
+        player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult;
+        player.angle=Math.atan(surfaceSlope(player.x));
+        player.x=nx;
+        Audio.sfx.jump();
+      } else {
+        player.x=nx; player.y=ny; player.vy=vyFollow;
+        player.angle=lerp(player.angle, Math.atan(slope), dt*12);
+        // ride spray
+        if(player.vx>600 && Math.random()<0.4){ spray(sx(player.x)+cam.x, player.y, 1, 1, P.foam); }
+      }
     }
     player.spin=0;
   } else {
@@ -536,6 +543,7 @@ function updatePlay(dt){
   updateParts(dt);
   for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=40*dt; if(f.life<=0) floaters.splice(i,1); }
   if(bannerData.t>0) bannerData.t-=dt;
+  player.prevHold=player.holding; // fürs Erkennen des Loslassens (= Sprung)
 }
 function surfaceAngle(x){ return Math.atan(surfaceSlope(x)); }
 
