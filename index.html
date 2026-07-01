@@ -15,7 +15,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hint">TIPPEN = springen · HALTEN = Welle abtauchen (Speed) &amp; am Kamm LOSLASSEN = hoher Absprung · in der Luft HALTEN = Flip</div>
+<div id="hint">TIPPEN = springen · HALTEN = pumpen, am Kamm LOSLASSEN = hoher Sprung · Luft: HALTEN = Flip, TIPPEN = Grab</div>
 <script>
 "use strict";
 /* ============================================================================
@@ -335,6 +335,7 @@ const player = {
   wipe:0, dead:false, // wipe = stumble timer
   shield:false, magnet:0, turbo:0, star:0, invPop:0,
   spin:0, trail:[], chaserX:0, _warned:false,
+  grabT:0, airGrabs:0, celebrateT:0, slowT:0, bigAirFx:false, airPressAt:0,
 };
 function resetPlayer(){
   seed={p1:rand(TAU),p2:rand(TAU),p3:rand(TAU)};
@@ -343,6 +344,7 @@ function resetPlayer(){
   player.combo=0; player.mult=1; player.comboTimer=0; player.rotAccum=0; player.airTime=0;
   player.wipe=0; player.dead=false; player.shield=false; player.magnet=0; player.turbo=0; player.star=0;
   player.trail.length=0; player.chaserX=player.x-1400; player._warned=false; player.deathBy=null;
+  player.grabT=0; player.airGrabs=0; player.celebrateT=0; player.slowT=0; player.bigAirFx=false; player.airPressAt=0;
   const B=BOARDS[save.board], S=SURFERS[save.surfer];
   player.B=B; player.S=S;
   // Perks
@@ -361,23 +363,33 @@ function press(x,y){
   if(state==='menu'){ menuClick(x,y); return; }
   if(state==='shop'){ shopClick(x,y); return; }
   if(state==='over'){ overClick(x,y); return; }
-  if(state==='play'){ player.holding=true; }
+  if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); }
   if(state==='pause'){ /* handled via button */ pauseClick(x,y); }
   hud.hintFade=true;
 }
-function release(){ pointer.down=false; if(state==='play') player.holding=false; }
+function release(){ pointer.down=false; if(state==='play'){ player.holding=false;
+  if(player.air && player.airPressAt && performance.now()-player.airPressAt<200) doGrab();
+  player.airPressAt=0; } }
+function doGrab(){
+  if(player.grabT>0) return;
+  player.grabT=0.5; player.airGrabs++;
+  floatText(sx(player.x),worldToScreenY(player.y)-30,'GRAB','#ffd36b',16);
+  Audio.sfx.trick();
+}
 cv.addEventListener('pointerdown',e=>{e.preventDefault(); press(e.clientX,e.clientY);},{passive:false});
 cv.addEventListener('pointerup',e=>{e.preventDefault(); release();},{passive:false});
 cv.addEventListener('pointercancel',()=>release());
 window.addEventListener('keydown',e=>{
   if(e.repeat) return;
-  if(e.code==='Space'||e.code==='ArrowDown'){ e.preventDefault(); if(state==='play') player.holding=true; else press(W/2,H/2); }
+  if(e.code==='Space'||e.code==='ArrowDown'){ e.preventDefault(); if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); } else press(W/2,H/2); }
   if(e.code==='Enter'){ if(state==='menu') startGame(); else if(state==='over') startGame(); }
   if(e.code==='KeyP'&&state==='play'){ state='pause'; }
   else if(e.code==='KeyP'&&state==='pause'){ state='play'; }
   if(e.code==='KeyM'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 });
-window.addEventListener('keyup',e=>{ if(e.code==='Space'||e.code==='ArrowDown'){ if(state==='play') player.holding=false; } });
+window.addEventListener('keyup',e=>{ if(e.code==='Space'||e.code==='ArrowDown'){ if(state==='play'){ player.holding=false;
+  if(player.air && player.airPressAt && performance.now()-player.airPressAt<200) doGrab();
+  player.airPressAt=0; } } });
 
 //////////////////// UI buttons registry (hit testing) ////////////////////
 let uiButtons=[];
@@ -428,6 +440,8 @@ function updatePlay(dt){
   if(player.star>0){ player.star-=dt; }
   if(player.magnet>0){ player.magnet-=dt; }
   if(player.invPop>0) player.invPop-=dt;
+  if(player.grabT>0) player.grabT-=dt;
+  if(player.celebrateT>0) player.celebrateT-=dt;
 
   // ----- movement -----
   if(player.wipe>0){
@@ -446,7 +460,7 @@ function updatePlay(dt){
       // garantierter Aufwärts-Impuls: Downhill-Tangente darf den Sprung NICHT wegfressen,
       // eine Uphill-Flanke gibt zusätzlich Extra-Höhe
       player.vy = Math.min(0, slope*player.vx) - pop*B.air;
-      player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult;
+      player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0;
       player.angle=Math.atan(slope);
       Audio.sfx.jump();
       spray(sx(player.x)+cam.x, player.y, 1, 8, P.foam);
@@ -471,7 +485,7 @@ function updatePlay(dt){
         player.air=true;
         player.vy=surfaceSlope(player.x)*player.vx;
         if(player.holding){ player.vy -= 220*B.air; } // durchgepumpt = etwas mehr Air
-        player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult;
+        player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0;
         player.angle=Math.atan(surfaceSlope(player.x));
         player.x=nx;
         Audio.sfx.jump();
@@ -489,6 +503,8 @@ function updatePlay(dt){
     player.x+=player.vx*dt;
     player.y+=player.vy*dt;
     player.airTime+=dt;
+    // großer Air -> kurze Zeitlupe + Zoom (einmal pro Flug)
+    if(!player.bigAirFx && (player.rotAccum>4.2 || player.airTime>0.9)){ player.bigAirFx=true; player.slowT=Math.max(player.slowT,0.5); }
     if(player.holding){
       const dir = -1; // backflip
       player.angVel += 9*dir*dt* B.turn;
@@ -560,11 +576,15 @@ function land(gy,P){
     player.vx*=1.05;
     // trick reward
     if(player.airTime>0.25){
-      let pts=Math.floor(player.airTime*80)+flips*120;
+      const grabs=player.airGrabs;
+      let pts=Math.floor(player.airTime*80)+flips*120+grabs*60;
       player.combo++; player.comboTimer=3.0;
       player.mult=1+player.combo*0.5;
       let label = flips>=2? (flips*360)+'° SPIN' : flips===1? 'BACKFLIP' : 'AIR';
+      if(grabs>0) label += ' + GRAB';
       if(player.airTime>1.1) label='SUPER '+label;
+      player.celebrateT=0.5;
+      if(navigator.vibrate){ try{ navigator.vibrate(18); }catch(err){} }
       const gain=Math.floor(pts*player.mult);
       player.score+=gain; player.pearls+=Math.floor(flips*2);
       floatText(sx(player.x),worldToScreenY(player.y)-40, label+'  +'+gain, P.accent,20);
@@ -592,14 +612,18 @@ function land(gy,P){
       Audio.sfx.crash(); cam.shake=14;
     }
   }
-  player.rotAccum=0; player.airTime=0;
+  player.rotAccum=0; player.airTime=0; player.airGrabs=0; player.grabT=0; player.bigAirFx=false;
 }
 
 function updateEntities(dt,P){
   const magR = 150 * (save.surfer==='reef'?1.3:1);
   for(const e of ents){
     if(e.type===ENT.JELLY){ e.y=e.baseY+Math.sin(perfNow()/500+e.ph)*22; }
-    if(e.type===ENT.FIN){ e.x -= e.chase*player.vx*dt*0.15; e.y=surfaceY(e.x); }
+    if(e.type===ENT.FIN){ e.x -= e.chase*player.vx*dt*0.15; e.y=surfaceY(e.x);
+      // Near-Miss: knapp über den Hai gesprungen -> Zeitlupe + Bonus
+      if(player.air && !e.nearMiss && Math.abs(e.x-player.x)<48){ const cl=e.y-player.y;
+        if(cl>10 && cl<120){ e.nearMiss=true; player.slowT=Math.max(player.slowT,0.5); player.pearls+=10;
+          floatText(sx(e.x),worldToScreenY(e.y)-64,'KNAPP! +10','#ff9e6b',18); Audio.sfx.power(); } } }
     if(e.type===ENT.BUOY){ e.y=surfaceY(e.x)+Math.sin(perfNow()/400+e.ph)*4; }
     // magnet pull for pearls/coins
     if((e.type===ENT.PEARL||e.type===ENT.COIN) && player.magnet>0 && !e.got){
@@ -666,6 +690,7 @@ function doWipeout(){
   floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
   spray(sx(player.x)+cam.x, player.y, -1, 24, '#ffffff');
   Audio.sfx.crash(); cam.shake=16;
+  if(navigator.vibrate){ try{ navigator.vibrate(45); }catch(err){} }
 }
 
 //////////////////// Boss update/draw ////////////////////
@@ -754,7 +779,8 @@ function drawBackground(P,dist){
     for(let i=-1;i<3;i++){
       const bx = -off + i*(W*0.6) - 100;
       ctx.fillStyle=mixHex(P.water[2],'#2b2b3a',0.3);
-      ctx.beginPath(); ctx.moveTo(bx,H*0.56); ctx.quadraticCurveTo(bx+120,H*0.4,bx+240,H*0.56); ctx.closePath(); ctx.fill();
+      // Insel läuft bis unter den Bildschirmrand weiter (keine harte Kante bei hoher Kamera)
+      ctx.beginPath(); ctx.moveTo(bx,H+20); ctx.lineTo(bx,H*0.56); ctx.quadraticCurveTo(bx+120,H*0.4,bx+240,H*0.56); ctx.lineTo(bx+240,H+20); ctx.closePath(); ctx.fill();
       // palm
       ctx.strokeStyle=mixHex(P.water[2],'#1a1a10',0.4); ctx.lineWidth=4;
       ctx.beginPath(); ctx.moveTo(bx+180,H*0.52); ctx.quadraticCurveTo(bx+192,H*0.44,bx+178,H*0.4); ctx.stroke();
@@ -933,24 +959,52 @@ function drawPlayer(P){
     for(let i=0;i<5;i++){ ctx.globalAlpha=0.6-i*0.1; ctx.beginPath(); ctx.ellipse(-26-i*10,4, 10-i, 5-i*0.6,0,0,TAU); ctx.fill(); ctx.fillStyle=i<2?'#ffd36b':'#ff6a2b'; } ctx.restore();
   }
   const B=player.B, S=player.S;
+  // ----- Posen weich blenden: c=hocken(pumpen) t=tuck(flip) g=grab u=jubel -----
+  const tgt={ c:(!player.air&&player.holding&&player.wipe<=0)?1:0,
+              t:(player.air&&player.holding)?1:0,
+              g:(player.air&&player.grabT>0)?1:0,
+              u:(player.celebrateT>0&&!player.air)?1:0 };
+  const ps = player._pose || (player._pose={c:0,t:0,g:0,u:0});
+  for(const k in tgt) ps[k]=lerp(ps[k],tgt[k],0.28);
+  const dip = ps.c*7 + ps.t*4;           // Hüfte senkt sich
+  const lean = ps.c*0.16 + ps.t*0.24;    // leichte Vorlage
+  const bend = Math.max(ps.c, ps.t*1.1, ps.g*0.6); // Kniebeuge
   // board
   const bg=ctx.createLinearGradient(-26,0,26,0); bg.addColorStop(0,B.c1); bg.addColorStop(1,B.c2);
   ctx.fillStyle=bg; ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.ellipse(0,6,26,7,0,0,TAU); ctx.fill(); ctx.stroke();
   ctx.fillStyle=rgba('#ffffff',0.4); ctx.beginPath(); ctx.ellipse(-6,4,12,2.4,0,0,TAU); ctx.fill();
-  // legs
+  // legs mit Kniebeuge (Fuß -> Knie -> Hüfte)
   ctx.strokeStyle=S.suit; ctx.lineWidth=5; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(-6,2); ctx.lineTo(-8,-12); ctx.moveTo(6,2); ctx.lineTo(8,-12); ctx.stroke();
-  // body
+  ctx.beginPath();
+  ctx.moveTo(-7,3); ctx.quadraticCurveTo(-13-5*bend, -3-4*bend, -7, -12+dip);
+  ctx.moveTo(7,3);  ctx.quadraticCurveTo(13+5*bend, -3-4*bend, 7, -12+dip);
+  ctx.stroke();
+  // Oberkörper (gesenkt + geneigt)
+  ctx.save(); ctx.translate(0,dip); ctx.rotate(lean);
   ctx.fillStyle=S.suit; roundRect(-9,-26,18,16,7); ctx.fill();
-  // arms out for balance
+  // Arme je nach Pose
   ctx.strokeStyle=S.skin; ctx.lineWidth=4;
   const armSwing=Math.sin(perfNow()/120)*2;
-  ctx.beginPath(); ctx.moveTo(-8,-22); ctx.lineTo(-20,-24+armSwing); ctx.moveTo(8,-22); ctx.lineTo(20,-20-armSwing); ctx.stroke();
-  // head
+  ctx.beginPath();
+  if(ps.g>0.5){        // GRAB: hintere Hand greift die Board-Kante
+    ctx.moveTo(-8,-22); ctx.quadraticCurveTo(-15,-10,-18,4-dip);
+    ctx.moveTo(8,-22);  ctx.lineTo(20,-28);
+  } else if(ps.t>0.5){ // TUCK: Arme angelegt
+    ctx.moveTo(-8,-22); ctx.lineTo(-12,-11);
+    ctx.moveTo(8,-22);  ctx.lineTo(12,-11);
+  } else if(ps.u>0.5){ // JUBEL: Arme hoch
+    ctx.moveTo(-8,-24); ctx.lineTo(-16,-40);
+    ctx.moveTo(8,-24);  ctx.lineTo(16,-40);
+  } else {             // Balance (beim Hocken weiter ausgestreckt & tiefer)
+    ctx.moveTo(-8,-22); ctx.lineTo(-20-6*ps.c,-24+armSwing+7*ps.c);
+    ctx.moveTo(8,-22);  ctx.lineTo(20+6*ps.c,-20-armSwing+7*ps.c);
+  }
+  ctx.stroke();
+  // Kopf + Haare
   ctx.fillStyle=S.skin; ctx.beginPath(); ctx.arc(0,-32,8,0,TAU); ctx.fill();
-  // hair
   ctx.fillStyle=mixHex(S.skin,'#2b1a0a',0.7); ctx.beginPath(); ctx.arc(0,-34,8,Math.PI,0); ctx.fill();
+  ctx.restore();
   // shield bubble
   if(player.shield){ ctx.strokeStyle=rgba('#7fe8ff',0.7+0.3*Math.sin(perfNow()/120)); ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(0,-16,30,0,TAU); ctx.stroke(); ctx.fillStyle=rgba('#7fe8ff',0.08); ctx.fill(); }
   ctx.restore();
@@ -1154,6 +1208,7 @@ function drawScene(){
   const P=pal(player.dist);
   applyShake();
   ctx.save(); ctx.translate(shakeX,shakeY);
+  if(viewZoom>1.004){ const zx=sx(player.x), zy=player.y-cam.y; ctx.translate(zx,zy); ctx.scale(viewZoom,viewZoom); ctx.translate(-zx,-zy); }
   drawBackground(P,player.dist);
   drawWater(P);
   drawChaser(P);
@@ -1180,11 +1235,16 @@ let lastChordIdx=-1;
 //////////////////// Main loop ////////////////////
 let last=performance.now();
 let _now=0; function perfNow(){ return _now; }
+let tScale=1, viewZoom=1; // Zeitlupe + Kamera-Zoom (große Airs, Near-Miss)
 function frame(t){
   _now=t;
   let dt=(t-last)/1000; last=t; if(dt>0.05) dt=0.05; if(dt<=0) dt=0.0001; // clamp gaps; nie 0 (Division in Physik)
   titleWaveT += dt*1.4;
-  if(state==='play'){ updatePlay(dt); drawScene(); }
+  const sTarget=(state==='play' && player.slowT>0)?0.45:1;
+  tScale=lerp(tScale,sTarget,0.16);
+  viewZoom=lerp(viewZoom,(state==='play'&&tScale<0.85)?1.16:1,0.10);
+  if(player.slowT>0) player.slowT-=dt;
+  if(state==='play'){ updatePlay(dt*tScale); drawScene(); }
   else if(state==='menu') drawMenu();
   else if(state==='shop') drawShop();
   else if(state==='pause') drawPause();

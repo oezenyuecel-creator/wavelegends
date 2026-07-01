@@ -15,6 +15,7 @@ schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 ## Steuerung (One-Button, mobile-first)
 - **HALTEN** = die Wellenflanke *anpumpen* → Speed aufbauen; am Kamm abheben (loslassen = Absprung-Pop für höhere Airs)
 - **In der Luft HALTEN** = **Flip/Rotation** (Trickpunkte) → rechtzeitig loslassen, um sauber & gerade zu landen
+- **In der Luft kurz TIPPEN** = **Grab** (Style-Punkte ohne Rotationsrisiko)
 - **Sauber landen** = Combo läuft weiter + kleiner Speed-Boost. Schief landen = **Wipeout** (Combo weg, Speed bricht ein)
 - Desktop-Test: `Leertaste` / `Pfeil-runter` = Halten, `P` = Pause, `M` = Ton
 
@@ -28,7 +29,8 @@ dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen 
 
 ## Was schon drin ist (v0.1)
 - **Surf-Physik**: prozedurale Wellen-Oberfläche (mehrschichtige Sinus-Swells), Anpumpen der Flanke, Absprung am Kamm, Flugphase, Landungs-Bewertung
-- **Trick- & Combo-System**: AIR · BACKFLIP · 360°/720° SPIN · SUPER AIR — je länger die Combo, desto höher der Multiplikator (`x1.5`, `x2.0` …)
+- **Trick- & Combo-System**: AIR · BACKFLIP · 360°/720° SPIN · **GRAB** (Tippen in der Luft) · SUPER AIR — Kombis wie „BACKFLIP + GRAB"; je länger die Combo, desto höher der Multiplikator (`x1.5`, `x2.0` …)
+- **Game Feel**: Surfer-Posen (Hocken beim Pumpen, Tuck im Flip, Grab-Pose, Jubel nach Trick-Landung), **Zeitlupe + Kamera-Zoom** bei großen Airs und beim knappen Hai-Überspringen („KNAPP! +10"), Vibration auf dem Handy
 - **5 Wetter-Biome** mit weichem Übergang & eigenem Look/Licht/Sound:
   - 🏝️ **Tropische Bucht** — Sonne, volumetrische Strahlen, Palmeninseln, Möwen
   - 🌅 **Goldener Sonnenuntergang** — warme Farben, tiefe Sonne
