@@ -276,17 +276,15 @@ function spawnAhead(px){
         const px=x+i*spread; ents.push({type:ENT.PEARL,x:px,y:surfaceY(px)-base-arc,r:9,got:false}); }
     } else if(r<0.52){
       ents.push({type:ENT.COIN,x,y:sy-rand(30,90),r:11,got:false,spin:0});
-    } else if(r<0.52+0.16*diff){
-      // obstacle: rock on surface
-      ents.push({type:ENT.ROCK,x,y:sy,r:26});
-    } else if(r<0.60+0.16*diff){
-      ents.push({type:ENT.JELLY,x,y:sy-rand(70,150),r:20,ph:rand(TAU),baseY:0});
-      ents[ents.length-1].baseY=ents[ents.length-1].y;
-    } else if(r<0.66+0.10*diff){
-      ents.push({type:ENT.FIN,x:x+300,y:sy,r:22,chase:rand(0.2,0.5)});
-    } else if(r<0.70){
-      ents.push({type:ENT.BUOY,x,y:sy,r:18,ph:rand(TAU)});
-    } else if(r<0.735){
+    } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30)){
+      // Hindernis-Band: skaliert mit Schwierigkeit, verdrängt aber NIE Bojen/Power-Ups
+      const hr=Math.random();
+      if(hr<0.40){ ents.push({type:ENT.ROCK,x,y:sy,r:26}); }
+      else if(hr<0.72){ const e={type:ENT.JELLY,x,y:sy-rand(22,52),r:24,ph:rand(TAU),baseY:0}; e.baseY=e.y; ents.push(e); }
+      else if(hr<0.88){ ents.push({type:ENT.FIN,x:x+300,y:sy,r:22,chase:rand(0.2,0.5)}); }
+      else { ents.push({type:ENT.BUOY,x,y:sy,r:18,ph:rand(TAU)}); }
+    } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30) + 0.05){
+      // festes Power-Up-Band (5%) — bleibt auch im Spätspiel erhalten
       const kinds=[ENT.MAGNET,ENT.SHIELD,ENT.TURBO,ENT.STAR];
       const w=[0.32,0.32,0.24,0.12]; let rr=Math.random(),k=ENT.MAGNET,acc=0;
       for(let i=0;i<kinds.length;i++){acc+=w[i]; if(rr<acc){k=kinds[i];break;}}
@@ -304,8 +302,8 @@ function maybeBoss(){
     // schedule three tentacle walls ahead
     let bx = player.x + W*0.9;
     for(let i=0;i<4;i++){
-      bossState.tents.push({x:bx, y0:surfaceY(bx), h:rand(160,240), ph:rand(TAU), alive:true, r:30});
-      bx += rand(360,520);
+      bossState.tents.push({x:bx, y0:surfaceY(bx), h:rand(50,80), ph:rand(TAU), alive:true, r:26});
+      bx += rand(380,540);
     }
     banner('⚠ KRAKEN ⚠','Spring über die Tentakel!');
     Audio.sfx.boost();
@@ -434,7 +432,7 @@ function updatePlay(dt){
   // ----- movement -----
   if(player.wipe>0){
     player.wipe-=dt;
-    player.vx=lerp(player.vx, minV*0.7, dt*3);
+    player.vx=lerp(player.vx, minV*0.85, dt*3);
     player.angle=lerp(player.angle, surfaceAngle(player.x), dt*8);
     player.y=surfaceY(player.x);
     player.x+=player.vx*dt;
@@ -443,9 +441,11 @@ function updatePlay(dt){
     if(player.prevHold && !player.holding){
       // LOSLASSEN = abspringen: Sprung-Impuls, skaliert mit Speed (Pumpen lohnt sich)
       const slope=surfaceSlope(player.x);
-      const pop = 320 + player.vx*0.34;
+      const pop = 380 + player.vx*0.40;
       player.air=true;
-      player.vy = slope*player.vx - pop*B.air;
+      // garantierter Aufwärts-Impuls: Downhill-Tangente darf den Sprung NICHT wegfressen,
+      // eine Uphill-Flanke gibt zusätzlich Extra-Höhe
+      player.vy = Math.min(0, slope*player.vx) - pop*B.air;
       player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult;
       player.angle=Math.atan(slope);
       Audio.sfx.jump();
@@ -552,8 +552,8 @@ function land(gy,P){
   // normalize board angle relative to slope
   let diff=Math.atan2(Math.sin(player.angle-sang),Math.cos(player.angle-sang));
   const flips=Math.floor(player.rotAccum/TAU);
-  let tol=0.55 + (save.surfer==='storm'?0.15:0); // storm = vergebender
-  tol -= clamp(player.dist/4000*0.12,0,0.2);
+  let tol=0.70 + (save.surfer==='storm'?0.15:0); // storm = vergebender
+  tol -= clamp(player.dist/5000*0.10,0,0.12);
   if(Math.abs(diff)<tol || player.airTime<0.12){
     // clean landing
     player.air=false; player.y=gy; player.angle=sang; player.vy=0; player.angVel=0;
@@ -586,7 +586,7 @@ function land(gy,P){
       Audio.sfx.land(true);
     } else {
       player.air=false; player.y=gy; player.angle=sang; player.vy=0;
-      player.wipe=0.9; player.combo=0; player.mult=1;
+      player.wipe=0.75; player.invPop=1.6; player.combo=0; player.mult=1;
       floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
       spray(sx(player.x)+cam.x, player.y, -1, 22, '#ffffff');
       Audio.sfx.crash(); cam.shake=14;
@@ -599,12 +599,12 @@ function updateEntities(dt,P){
   const magR = 150 * (save.surfer==='reef'?1.3:1);
   for(const e of ents){
     if(e.type===ENT.JELLY){ e.y=e.baseY+Math.sin(perfNow()/500+e.ph)*22; }
-    if(e.type===ENT.FIN){ e.x -= e.chase*player.vx*dt*0.15; e.y=surfaceY(e.x); e.x += player.vx*dt*0.0; }
+    if(e.type===ENT.FIN){ e.x -= e.chase*player.vx*dt*0.15; e.y=surfaceY(e.x); }
     if(e.type===ENT.BUOY){ e.y=surfaceY(e.x)+Math.sin(perfNow()/400+e.ph)*4; }
     // magnet pull for pearls/coins
     if((e.type===ENT.PEARL||e.type===ENT.COIN) && player.magnet>0 && !e.got){
       const dx=player.x-e.x, dy=player.y-e.y, d=Math.hypot(dx,dy);
-      if(d<magR){ e.x+=dx/d*380*dt; e.y+=dy/d*380*dt; }
+      if(d>1 && d<magR){ e.x+=dx/d*380*dt; e.y+=dy/d*380*dt; }
     }
     // collision
     const dx=player.x-e.x, dy=player.y-e.y, d=Math.hypot(dx,dy);
@@ -646,7 +646,8 @@ function hitHazard(e,P){ doWipeout(); }
 function doWipeout(){
   if(player.star>0 || player.invPop>0 || player.wipe>0) return;
   if(player.shield){ player.shield=false; player.invPop=1.1; floatText(sx(player.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); Audio.sfx.land(false); cam.shake=8; return; }
-  player.air=false; player.wipe=1.0; player.vx=Math.min(player.vx,230);
+  player.air=false; player.wipe=0.75; player.vx=Math.min(player.vx,300);
+  player.invPop=1.6; // kurze Schonfrist nach dem Aufstehen — verhindert unfaire Wipeout-Ketten
   player.combo=0; player.mult=1;
   floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
   spray(sx(player.x)+cam.x, player.y, -1, 24, '#ffffff');
@@ -659,16 +660,17 @@ function updateBoss(dt){
   for(const t of bossState.tents){
     if(!t.alive) continue;
     t.y0=surfaceY(t.x);
-    // collision: tentacle is a vertical bar; must be jumped over
-    const topY = t.y0 - t.h - Math.sin(perfNow()/300+t.ph)*14;
-    const dx=Math.abs(player.x-t.x);
-    if(dx< t.r+22){
-      if(player.y > topY-10 && player.star<=0 && player.invPop<=0){
-        if(player.shield){ player.shield=false; player.invPop=1.1; t.alive=false; Audio.sfx.land(false); cam.shake=8; }
-        else { doWipeout(); }
-      } else if(player.y<=topY-10){
-        // passed over top -> nick it
-        if(dx<6 && t.alive){ t.alive=false; player.pearls+=8; floatText(sx(t.x),worldToScreenY(topY)-20,'+8','#ffcaa0',16);}
+    const topY = t.y0 - t.h - Math.sin(perfNow()/300+t.ph)*10;
+    // Jede Tentakel wird genau EINMAL aufgelöst, wenn der Spieler ihre x-Position überquert
+    if(player.x > t.x - 4){
+      t.alive=false;
+      // großzügig: in der Luft & mindestens halb so hoch wie die Tentakel = drüber
+      const cleared = player.air && player.y < t.y0 - t.h*0.5;
+      if(cleared){
+        player.pearls+=8; floatText(sx(t.x),worldToScreenY(topY)-16,'+8','#ffcaf0',16); Audio.sfx.collect(7);
+      } else if(player.star<=0 && player.invPop<=0){
+        if(player.shield){ player.shield=false; player.invPop=1.1; Audio.sfx.land(false); cam.shake=8; floatText(sx(t.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); }
+        else doWipeout();
       }
     }
   }
@@ -898,6 +900,8 @@ function drawPlayer(P){
   ctx.save();
   ctx.translate(X,Y);
   ctx.rotate(player.angle);
+  // Schonfrist nach Wipeout: Surfer blinkt
+  if(player.invPop>0 && player.wipe<=0){ ctx.globalAlpha = 0.45+0.4*Math.sin(perfNow()/60); }
   // aura states
   if(player.star>0){ ctx.save(); ctx.globalAlpha=0.4+0.2*Math.sin(perfNow()/80); const gg=ctx.createRadialGradient(0,-14,4,0,-14,44); gg.addColorStop(0,'#ffe36b'); gg.addColorStop(1,'rgba(255,227,107,0)'); ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(0,-14,44,0,TAU); ctx.fill(); ctx.restore(); }
   if(player.turbo>0){ // flame trail behind board
@@ -1153,7 +1157,7 @@ let last=performance.now();
 let _now=0; function perfNow(){ return _now; }
 function frame(t){
   _now=t;
-  let dt=(t-last)/1000; last=t; if(dt>0.05) dt=0.05; // clamp big gaps
+  let dt=(t-last)/1000; last=t; if(dt>0.05) dt=0.05; if(dt<=0) dt=0.0001; // clamp gaps; nie 0 (Division in Physik)
   titleWaveT += dt*1.4;
   if(state==='play'){ updatePlay(dt); drawScene(); }
   else if(state==='menu') drawMenu();
