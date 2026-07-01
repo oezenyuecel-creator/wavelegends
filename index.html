@@ -78,6 +78,88 @@ const SURFERS = {
   aya:  {name:'Aya',   price:3500, skin:'#8a5a3b',suit:'#ffd36b', perk:'+10% Perlen.'},
 };
 
+//////////////////// Missionen & Daily Challenge ////////////////////
+const MISSION_POOL=[
+  {id:'d600',  txt:'Erreiche 600 m in einem Run',      stat:'dist',    scope:'run',   n:600,  rew:40},
+  {id:'d1200', txt:'Erreiche 1200 m in einem Run',     stat:'dist',    scope:'run',   n:1200, rew:70},
+  {id:'d2000', txt:'Erreiche 2000 m in einem Run',     stat:'dist',    scope:'run',   n:2000, rew:120},
+  {id:'p60',   txt:'Sammle 60 Perlen in einem Run',    stat:'pearls',  scope:'run',   n:60,   rew:50},
+  {id:'p120',  txt:'Sammle 120 Perlen in einem Run',   stat:'pearls',  scope:'run',   n:120,  rew:90},
+  {id:'t5',    txt:'Lande 5 Tricks in einem Run',      stat:'tricks',  scope:'run',   n:5,    rew:50},
+  {id:'t12',   txt:'Lande 12 Tricks in einem Run',     stat:'tricks',  scope:'run',   n:12,   rew:100},
+  {id:'f3',    txt:'Lande 3 Flips in einem Run',       stat:'flips',   scope:'run',   n:3,    rew:60},
+  {id:'g3',    txt:'Mache 3 Grabs in einem Run',       stat:'grabs',   scope:'run',   n:3,    rew:50},
+  {id:'c3',    txt:'Erreiche eine x3-Combo',           stat:'mult',    scope:'run',   n:3,    rew:80},
+  {id:'nm1',   txt:'Überspringe knapp einen Hai',      stat:'nearMiss',scope:'run',   n:1,    rew:60},
+  {id:'boss1', txt:'Besiege den Kraken',               stat:'boss',    scope:'run',   n:1,    rew:150},
+  {id:'pu3',   txt:'Sammle 3 Power-Ups in einem Run',  stat:'powerups',scope:'run',   n:3,    rew:60},
+  {id:'nw500', txt:'Surfe 500 m ohne Wipeout',         stat:'noWipe',  scope:'run',   n:500,  rew:70},
+  {id:'nw1000',txt:'Surfe 1000 m ohne Wipeout',        stat:'noWipe',  scope:'run',   n:1000, rew:130},
+  {id:'td8k',  txt:'Surfe insgesamt 8000 m',           stat:'dist',    scope:'total', n:8000, rew:150},
+  {id:'tp500', txt:'Sammle insgesamt 500 Perlen',      stat:'pearls',  scope:'total', n:500,  rew:150},
+  {id:'tf10',  txt:'Lande insgesamt 10 Flips',         stat:'flips',   scope:'total', n:10,   rew:120},
+];
+const DAILY_POOL=[
+  {id:'dy_d1500', txt:'1500 m in einem Run',     stat:'dist',  scope:'run', n:1500, rew:200},
+  {id:'dy_p150',  txt:'150 Perlen in einem Run', stat:'pearls',scope:'run', n:150,  rew:200},
+  {id:'dy_t10',   txt:'10 Tricks in einem Run',  stat:'tricks',scope:'run', n:10,   rew:200},
+  {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
+];
+let runStats={}, missionTick=0;
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0}; }
+resetRunStats();
+function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
+function ensureMissions(){
+  if(!Array.isArray(save.missions)) save.missions=[];
+  save.missions=save.missions.filter(s=>missionDef(s.id));
+  while(save.missions.length<3){
+    const active=save.missions.map(s=>s.id);
+    const cand=MISSION_POOL.filter(m=>!active.includes(m.id));
+    if(!cand.length) break;
+    save.missions.push({id:pick(cand).id, prog:0, done:false});
+  }
+}
+function ensureDaily(){
+  const today=new Date().toISOString().slice(0,10);
+  if(!save.daily || save.daily.date!==today){ save.daily={date:today, id:pick(DAILY_POOL).id, prog:0, done:false}; }
+}
+ensureMissions(); ensureDaily(); persist();
+function runStatValue(stat){
+  switch(stat){
+    case 'dist': return player.dist;
+    case 'pearls': return player.pearls;
+    case 'mult': return runStats.maxMult;
+    case 'noWipe': return runStats.noWipeBest;
+    default: return runStats[stat]||0;
+  }
+}
+function missionValue(slot){ const d=missionDef(slot.id); return (d.scope==='total'? slot.prog:0) + runStatValue(d.stat); }
+function grantMission(d){
+  if(state==='play') player.pearls+=d.rew; else save.pearls+=d.rew;
+  banner('🎯 MISSION ERFÜLLT!', d.txt+'  ·  +'+d.rew+' ◐');
+  Audio.sfx.power();
+}
+function checkMissions(){
+  for(const s of save.missions){ if(s.done) continue; const d=missionDef(s.id);
+    if(d && missionValue(s)>=d.n){ s.done=true; grantMission(d); } }
+  const dy=save.daily;
+  if(dy && !dy.done){ const d=missionDef(dy.id);
+    if(d && missionValue(dy)>=d.n){ dy.done=true; grantMission(d); } }
+}
+function finalizeMissions(){
+  checkMissions();
+  for(const s of save.missions){ const d=missionDef(s.id);
+    if(d && !s.done && d.scope==='total') s.prog += Math.floor(runStatValue(d.stat)); }
+  save.missions=save.missions.filter(s=>!s.done); // erledigte Slots freimachen
+  ensureMissions();
+}
+function bankRun(){
+  finalizeMissions();
+  save.pearls += player.pearls;
+  if(Math.floor(player.dist)>save.best){ save.best=Math.floor(player.dist); player.newBest=true; } else player.newBest=false;
+  persist();
+}
+
 //////////////////// Audio (procedural, no assets) ////////////////////
 const Audio = (()=>{
   let actx=null, master=null, waveGain=null, padGain=null, started=false;
@@ -315,6 +397,7 @@ function maybeBoss(){
       bossState.active=false;
       bossState.next = player.dist + rand(1600,2200);
       player.pearls += 60; save.pearls+=60;
+      runStats.boss++; checkMissions();
       banner('KRAKEN BESIEGT','+60 Perlen');
       Audio.sfx.power();
     }
@@ -361,6 +444,7 @@ function press(x,y){
   pointer.down=true; pointer.x=x; pointer.y=y;
   Audio.resume();
   if(state==='menu'){ menuClick(x,y); return; }
+  if(state==='missions'){ missionsClick(x,y); return; }
   if(state==='shop'){ shopClick(x,y); return; }
   if(state==='over'){ overClick(x,y); return; }
   if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); }
@@ -416,7 +500,7 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w
 let state='menu';
 let hud={hintFade:false};
 function startGame(){
-  resetPlayer(); resetWorld();
+  resetPlayer(); resetWorld(); resetRunStats(); ensureDaily();
   state='play'; save.runs++; persist();
   Audio.resume(); Audio.setActive(true);
   document.getElementById('hint').style.opacity='0';
@@ -529,6 +613,11 @@ function updatePlay(dt){
   // combo timer decay
   if(player.comboTimer>0){ player.comboTimer-=dt; if(player.comboTimer<=0){ player.combo=0; player.mult=1; } }
 
+  // ----- Missions-Tracking -----
+  runStats.maxMult=Math.max(runStats.maxMult, player.mult);
+  runStats.noWipeBest=Math.max(runStats.noWipeBest, player.dist-runStats.lastWipeDist);
+  if((missionTick++ & 31)===0) checkMissions();
+
   // ----- camera -----
   cam.x = player.x - W*0.34;
   const targetCamY = player.y - H*0.52;
@@ -585,6 +674,7 @@ function land(gy,P){
       if(player.airTime>1.1) label='SUPER '+label;
       player.celebrateT=0.5;
       if(navigator.vibrate){ try{ navigator.vibrate(18); }catch(err){} }
+      runStats.tricks++; runStats.flips+=flips; runStats.grabs+=grabs; checkMissions();
       const gain=Math.floor(pts*player.mult);
       player.score+=gain; player.pearls+=Math.floor(flips*2);
       floatText(sx(player.x),worldToScreenY(player.y)-40, label+'  +'+gain, P.accent,20);
@@ -607,6 +697,7 @@ function land(gy,P){
     } else {
       player.air=false; player.y=gy; player.angle=sang; player.vy=0;
       player.wipe=0.75; player.invPop=1.6; player.combo=0; player.mult=1;
+      runStats.lastWipeDist=player.dist;
       floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
       spray(sx(player.x)+cam.x, player.y, -1, 22, '#ffffff');
       Audio.sfx.crash(); cam.shake=14;
@@ -623,6 +714,7 @@ function updateEntities(dt,P){
       // Near-Miss: knapp über den Hai gesprungen -> Zeitlupe + Bonus
       if(player.air && !e.nearMiss && Math.abs(e.x-player.x)<48){ const cl=e.y-player.y;
         if(cl>10 && cl<120){ e.nearMiss=true; player.slowT=Math.max(player.slowT,0.5); player.pearls+=10;
+          runStats.nearMiss++; checkMissions();
           floatText(sx(e.x),worldToScreenY(e.y)-64,'KNAPP! +10','#ff9e6b',18); Audio.sfx.power(); } } }
     if(e.type===ENT.BUOY){ e.y=surfaceY(e.x)+Math.sin(perfNow()/400+e.ph)*4; }
     // magnet pull for pearls/coins
@@ -656,10 +748,10 @@ function collide(e,P){
       Audio.sfx.collect(9);
       break;
     }
-    case ENT.MAGNET: { e.got=true; player.magnet=8; floatText(sx(e.x),worldToScreenY(e.y),'MAGNET','#7fe8ff',16); Audio.sfx.power(); break; }
-    case ENT.SHIELD: { e.got=true; player.shield=true; floatText(sx(e.x),worldToScreenY(e.y),'SCHILD','#8affc8',16); Audio.sfx.power(); break; }
-    case ENT.TURBO:  { e.got=true; player.turbo=2.4; floatText(sx(e.x),worldToScreenY(e.y),'TURBO','#ffb03a',16); Audio.sfx.boost(); cam.shake=6; break; }
-    case ENT.STAR:   { e.got=true; player.star=6; floatText(sx(e.x),worldToScreenY(e.y),'★ UNBESIEGBAR','#ffe36b',16); Audio.sfx.power(); break; }
+    case ENT.MAGNET: { e.got=true; player.magnet=8; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'MAGNET','#7fe8ff',16); Audio.sfx.power(); break; }
+    case ENT.SHIELD: { e.got=true; player.shield=true; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'SCHILD','#8affc8',16); Audio.sfx.power(); break; }
+    case ENT.TURBO:  { e.got=true; player.turbo=2.4; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'TURBO','#ffb03a',16); Audio.sfx.boost(); cam.shake=6; break; }
+    case ENT.STAR:   { e.got=true; player.star=6; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'★ UNBESIEGBAR','#ffe36b',16); Audio.sfx.power(); break; }
     case ENT.ROCK: case ENT.JELLY: case ENT.BUOY: {
       if(player.air) return; // in der Luft überspringst du Hindernisse
       hitHazard(e,P); break;
@@ -686,6 +778,7 @@ function doWipeout(){
   if(player.shield){ player.shield=false; player.invPop=1.1; floatText(sx(player.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); Audio.sfx.land(false); cam.shake=8; return; }
   player.air=false; player.wipe=0.75; player.vx=Math.min(player.vx,300);
   player.invPop=1.6; // kurze Schonfrist nach dem Aufstehen — verhindert unfaire Wipeout-Ketten
+  runStats.lastWipeDist=player.dist;
   player.combo=0; player.mult=1;
   floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
   spray(sx(player.x)+cam.x, player.y, -1, 24, '#ffffff');
@@ -721,9 +814,7 @@ function gameOver(){
   state='over';
   Audio.setActive(false);
   player.dead=true;
-  save.pearls += player.pearls;
-  if(Math.floor(player.dist)>save.best){ save.best=Math.floor(player.dist); player.newBest=true; } else player.newBest=false;
-  persist();
+  bankRun();
 }
 
 //////////////////// Rendering helpers ////////////////////
@@ -1105,20 +1196,64 @@ function drawMenu(){
   // buttons
   uiButtons=[];
   const bw=Math.min(260,W*0.7), bx=(W-bw)/2;
-  btn('play', bx, H*0.66, bw, 58, '▶  SURFEN', {c1:'#2fd0ff',c2:'#1b7fd6',fs:22});
-  btn('shop', bx, H*0.66+70, bw*0.48, 46, '🛍  Shop', {c1:'#ffb84d',c2:'#e07a2b',fs:16});
-  btn('sound', bx+bw*0.52, H*0.66+70, bw*0.48, 46, save.soundOn?'🔊 Ton':'🔇 Ton', {c1:'#7a8aa0',c2:'#4a5a70',fs:16});
+  btn('play', bx, H*0.62, bw, 58, '▶  SURFEN', {c1:'#2fd0ff',c2:'#1b7fd6',fs:22});
+  const dailyOpen = save.daily && !save.daily.done;
+  btn('missions', bx, H*0.62+70, bw, 46, dailyOpen? '🎯 Missionen · ★ Daily!' : '🎯 Missionen', {c1:'#39d98a',c2:'#1b8a5a',fs:16});
+  btn('shop', bx, H*0.62+126, bw*0.48, 44, '🛍  Shop', {c1:'#ffb84d',c2:'#e07a2b',fs:15});
+  btn('sound', bx+bw*0.52, H*0.62+126, bw*0.48, 44, save.soundOn?'🔊 Ton':'🔇 Ton', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
   drawButtons();
   // stats footer
   ctx.save(); ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.7)';
-  ctx.fillText(`◐ ${save.pearls} Perlen   ·   Best ${save.best} m   ·   ${save.runs} Runs`, W/2, H*0.66+128);
+  ctx.fillText(`◐ ${save.pearls} Perlen   ·   Best ${save.best} m   ·   ${save.runs} Runs`, W/2, H*0.62+184);
   ctx.restore();
 }
 function menuClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
   if(id==='play') startGame();
+  else if(id==='missions'){ ensureDaily(); state='missions'; }
   else if(id==='shop'){ state='shop'; shopTab='boards'; }
   else if(id==='sound'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 }
+
+//////////////////// Screen: Missionen ////////////////////
+function drawMissions(){
+  drawBackground(pal(0),0);
+  ctx.fillStyle='rgba(4,18,31,.55)'; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font='900 30px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('MISSIONEN',W/2,24);
+  ctx.font='700 16px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('◐ '+save.pearls+' Perlen', W/2, 60); ctx.restore();
+  uiButtons=[];
+  const cardW=Math.min(W-40,420), cardX=(W-cardW)/2; let cy=100;
+  function card(d,val,done,daily){
+    const h=daily?92:78;
+    ctx.save(); ctx.textBaseline='top';
+    roundRect(cardX,cy,cardW,h-10,14);
+    ctx.fillStyle= done?'rgba(57,217,138,.16)': daily?'rgba(255,211,107,.12)':'rgba(255,255,255,.06)'; ctx.fill();
+    ctx.strokeStyle= done?'rgba(57,217,138,.6)': daily?'rgba(255,211,107,.55)':'rgba(255,255,255,.12)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.textAlign='left';
+    if(daily){ ctx.font='800 11px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('★ TAGES-CHALLENGE', cardX+16, cy+10); }
+    ctx.font='600 15px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(d.txt, cardX+16, cy+(daily?26:12));
+    ctx.textAlign='right'; ctx.font='800 15px system-ui'; ctx.fillStyle='#ffd36b';
+    ctx.fillText('+'+d.rew+' ◐', cardX+cardW-16, cy+(daily?26:12));
+    // Fortschritt
+    const bw2=cardW-32, by=cy+(daily?58:44);
+    ctx.fillStyle='rgba(255,255,255,.14)'; roundRect(cardX+16,by,bw2,8,4); ctx.fill();
+    const fr=clamp(val/d.n,0,1);
+    if(fr>0){ ctx.fillStyle= done?'#39d98a':'#2fd0ff'; roundRect(cardX+16,by,Math.max(6,bw2*fr),8,4); ctx.fill(); }
+    ctx.textAlign='right'; ctx.font='600 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.75)';
+    ctx.fillText(done?'✓ erledigt':(Math.min(Math.floor(val),d.n)+' / '+d.n), cardX+16+bw2, by-15);
+    ctx.restore();
+    cy+=h;
+  }
+  const dy=save.daily, dd=dy?missionDef(dy.id):null;
+  if(dd) card(dd, dy.done?dd.n:(dd.scope==='total'?dy.prog:0), dy.done, true);
+  for(const s of save.missions){ const d=missionDef(s.id); if(!d) continue;
+    card(d, s.done?d.n:(d.scope==='total'?s.prog:0), s.done, false); }
+  ctx.save(); ctx.textAlign='center'; ctx.font='500 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.55)';
+  ctx.fillText('Erfüllte Missionen werden ersetzt · Daily täglich neu', W/2, cy+4); ctx.restore();
+  btn('back',(W-Math.min(260,W*0.7))/2, Math.min(cy+28,H-70), Math.min(260,W*0.7), 48, '‹ Zurück', {c1:'#7a8aa0',c2:'#4a5a70',fs:16});
+  drawButtons();
+}
+function missionsClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button(); if(id==='back') state='menu'; }
 
 //////////////////// Screen: Shop ////////////////////
 let shopTab='boards', shopScroll=0;
@@ -1181,7 +1316,7 @@ function drawPause(){ // draw frozen game beneath then overlay
 }
 function pauseClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
   if(id==='resume'){ state='play'; Audio.setActive(true);} else if(id==='quit'){ gameOverToMenu(); } }
-function gameOverToMenu(){ save.pearls += player.pearls; if(Math.floor(player.dist)>save.best) save.best=Math.floor(player.dist); persist(); state='menu'; }
+function gameOverToMenu(){ bankRun(); state='menu'; }
 
 //////////////////// Screen: Game Over ////////////////////
 function drawOver(){
@@ -1246,6 +1381,7 @@ function frame(t){
   if(player.slowT>0) player.slowT-=dt;
   if(state==='play'){ updatePlay(dt*tScale); drawScene(); }
   else if(state==='menu') drawMenu();
+  else if(state==='missions') drawMissions();
   else if(state==='shop') drawShop();
   else if(state==='pause') drawPause();
   else if(state==='over') drawOver();
