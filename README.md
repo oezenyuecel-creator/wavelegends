@@ -23,6 +23,9 @@ Statt „einmal berührt = tot" jagt dich eine **riesige Monsterwelle** von hint
 nicht sofort — sie verursachen **Wipeouts**, die dich verlangsamen, sodass die Welle aufholt. **Speed &
 saubere Tricks = Überleben.** Fair, spannend und thematisch perfekt fürs Surfen.
 
+**Ausnahme: der Hai. 🦈** Er ist selten, kündigt sich mit pulsierender roter Warn-Aura an — und frisst
+dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen den Hai).
+
 ## Was schon drin ist (v0.1)
 - **Surf-Physik**: prozedurale Wellen-Oberfläche (mehrschichtige Sinus-Swells), Anpumpen der Flanke, Absprung am Kamm, Flugphase, Landungs-Bewertung
 - **Trick- & Combo-System**: AIR · BACKFLIP · 360°/720° SPIN · SUPER AIR — je länger die Combo, desto höher der Multiplikator (`x1.5`, `x2.0` …)

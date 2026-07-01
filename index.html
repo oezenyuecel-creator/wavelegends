@@ -279,9 +279,9 @@ function spawnAhead(px){
     } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30)){
       // Hindernis-Band: skaliert mit Schwierigkeit, verdrängt aber NIE Bojen/Power-Ups
       const hr=Math.random();
-      if(hr<0.40){ ents.push({type:ENT.ROCK,x,y:sy,r:26}); }
-      else if(hr<0.72){ const e={type:ENT.JELLY,x,y:sy-rand(22,52),r:24,ph:rand(TAU),baseY:0}; e.baseY=e.y; ents.push(e); }
-      else if(hr<0.88){ ents.push({type:ENT.FIN,x:x+300,y:sy,r:22,chase:rand(0.2,0.5)}); }
+      if(hr<0.42){ ents.push({type:ENT.ROCK,x,y:sy,r:26}); }
+      else if(hr<0.76){ const e={type:ENT.JELLY,x,y:sy-rand(22,52),r:24,ph:rand(TAU),baseY:0}; e.baseY=e.y; ents.push(e); }
+      else if(hr<0.84){ ents.push({type:ENT.FIN,x:x+300,y:sy,r:22,chase:rand(0.2,0.5)}); } // Haie selten — dafür TÖDLICH
       else { ents.push({type:ENT.BUOY,x,y:sy,r:18,ph:rand(TAU)}); }
     } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30) + 0.05){
       // festes Power-Up-Band (5%) — bleibt auch im Spätspiel erhalten
@@ -342,7 +342,7 @@ function resetPlayer(){
   player.angle=0; player.angVel=0; player.dist=0; player.pearls=0; player.score=0;
   player.combo=0; player.mult=1; player.comboTimer=0; player.rotAccum=0; player.airTime=0;
   player.wipe=0; player.dead=false; player.shield=false; player.magnet=0; player.turbo=0; player.star=0;
-  player.trail.length=0; player.chaserX=player.x-1400; player._warned=false;
+  player.trail.length=0; player.chaserX=player.x-1400; player._warned=false; player.deathBy=null;
   const B=BOARDS[save.board], S=SURFERS[save.surfer];
   player.B=B; player.S=S;
   // Perks
@@ -524,7 +524,7 @@ function updatePlay(dt){
   player.chaserX += chaserV*dt;
   if(player.x - player.chaserX > 1500) player.chaserX = player.x - 1500;
   const gap = player.x - player.chaserX;
-  if(gap < 46){ Audio.sfx.crash(); cam.shake=20; spray(sx(player.x)+cam.x, player.y, -1, 30, '#ffffff'); gameOver(); }
+  if(gap < 46){ player.deathBy='wave'; Audio.sfx.crash(); cam.shake=20; spray(sx(player.x)+cam.x, player.y, -1, 30, '#ffffff'); gameOver(); }
   else if(gap < 620 && !player._warned){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!'); }
   else if(gap > 760) player._warned=false;
 
@@ -636,13 +636,27 @@ function collide(e,P){
     case ENT.SHIELD: { e.got=true; player.shield=true; floatText(sx(e.x),worldToScreenY(e.y),'SCHILD','#8affc8',16); Audio.sfx.power(); break; }
     case ENT.TURBO:  { e.got=true; player.turbo=2.4; floatText(sx(e.x),worldToScreenY(e.y),'TURBO','#ffb03a',16); Audio.sfx.boost(); cam.shake=6; break; }
     case ENT.STAR:   { e.got=true; player.star=6; floatText(sx(e.x),worldToScreenY(e.y),'★ UNBESIEGBAR','#ffe36b',16); Audio.sfx.power(); break; }
-    case ENT.ROCK: case ENT.JELLY: case ENT.FIN: case ENT.BUOY: {
+    case ENT.ROCK: case ENT.JELLY: case ENT.BUOY: {
       if(player.air) return; // in der Luft überspringst du Hindernisse
       hitHazard(e,P); break;
+    }
+    case ENT.FIN: {
+      if(player.air) return; // drüberspringen = sicher
+      sharkAttack(e,P); break;
     }
   }
 }
 function hitHazard(e,P){ doWipeout(); }
+function sharkAttack(e,P){
+  // Hai = tödlich. Ausnahmen: Stern, Blink-Schonfrist, Schild (frisst den Hai statt dich)
+  if(player.star>0 || player.invPop>0) return;
+  if(player.shield){ player.shield=false; player.invPop=1.1; e.got=true;
+    floatText(sx(player.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); Audio.sfx.land(false); cam.shake=8; return; }
+  player.deathBy='shark';
+  Audio.sfx.crash(); cam.shake=26;
+  for(let i=0;i<44;i++) spawnPart(player.x, player.y, rand(-280,280), rand(-460,40), rand(0.4,0.9), rand(2,5.5), i%3? '#ffffff':'#ff4a4a', true);
+  gameOver();
+}
 function doWipeout(){
   if(player.star>0 || player.invPop>0 || player.wipe>0) return;
   if(player.shield){ player.shield=false; player.invPop=1.1; floatText(sx(player.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); Audio.sfx.land(false); cam.shake=8; return; }
@@ -856,8 +870,18 @@ function drawEntities(P){
         for(let t=0;t<5;t++){ const tx=X-e.r+ t*(e.r*2/4); ctx.beginPath(); ctx.moveTo(tx,Y); ctx.quadraticCurveTo(tx+Math.sin(perfNow()/200+t)*4,Y+18,tx,Y+30); ctx.stroke(); }
         ctx.restore(); break; }
       case ENT.FIN: {
-        ctx.save(); ctx.fillStyle='#2b3a46'; ctx.beginPath(); ctx.moveTo(X-16,Y+4); ctx.quadraticCurveTo(X,Y-30,X+14,Y+4); ctx.closePath(); ctx.fill();
-        ctx.fillStyle=rgba(P.foam,0.5); ctx.beginPath(); ctx.ellipse(X,Y+4,20,4,0,0,Math.PI); ctx.fill(); ctx.restore(); break; }
+        ctx.save();
+        const near = Math.abs(e.x-player.x) < 760; // tödlich = deutlich warnen
+        if(near){ const pu=0.35+0.25*Math.sin(perfNow()/110);
+          const wg2=ctx.createRadialGradient(X,Y-6,4,X,Y-6,46); wg2.addColorStop(0,rgba('#ff3b4a',pu)); wg2.addColorStop(1,rgba('#ff3b4a',0));
+          ctx.fillStyle=wg2; ctx.beginPath(); ctx.arc(X,Y-6,46,0,TAU); ctx.fill();
+          ctx.fillStyle='#ff5a5a'; ctx.font='800 15px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText('⚠', X, Y-44+Math.sin(perfNow()/160)*3); }
+        ctx.fillStyle='#26343f'; ctx.beginPath(); ctx.moveTo(X-22,Y+5); ctx.quadraticCurveTo(X-2,Y-38,X+18,Y+5); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle=rgba('#0d161d',0.6); ctx.lineWidth=2; ctx.stroke();
+        // Kielwasser
+        ctx.fillStyle=rgba(P.foam,0.55); ctx.beginPath(); ctx.ellipse(X,Y+5,26,5,0,0,Math.PI); ctx.fill();
+        ctx.restore(); break; }
       case ENT.BUOY: {
         ctx.save(); ctx.fillStyle='#ff5a4a'; ctx.beginPath(); ctx.arc(X,Y-6,e.r*0.7,0,TAU); ctx.fill();
         ctx.fillStyle='#fff'; ctx.fillRect(X-e.r*0.7,Y-8,e.r*1.4,3); ctx.restore(); break; }
@@ -1110,7 +1134,8 @@ function drawOver(){
   drawScene(); // frozen scene
   ctx.save(); ctx.fillStyle='rgba(4,18,31,.62)'; ctx.fillRect(0,0,W,H);
   ctx.textAlign='center';
-  ctx.font='900 40px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(player.newBest?'NEUER REKORD!':'WIPEOUT!', W/2, H*0.2);
+  const overTitle = player.newBest? 'NEUER REKORD!' : (player.deathBy==='shark'? '🦈 GEFRESSEN!' : 'WIPEOUT!');
+  ctx.font='900 40px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(overTitle, W/2, H*0.2);
   ctx.font='800 60px system-ui'; ctx.fillStyle= player.newBest?'#ffe36b':'#7fe8ff'; ctx.fillText(Math.floor(player.dist)+' m', W/2, H*0.28);
   ctx.font='600 16px system-ui'; ctx.fillStyle='rgba(255,255,255,.85)';
   ctx.fillText('◐ '+player.pearls+' Perlen gesammelt   ·   Best '+save.best+' m', W/2, H*0.28+56);
