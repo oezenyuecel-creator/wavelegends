@@ -98,6 +98,10 @@ const MISSION_POOL=[
   {id:'td8k',  txt:'Surfe insgesamt 8000 m',           stat:'dist',    scope:'total', n:8000, rew:150},
   {id:'tp500', txt:'Sammle insgesamt 500 Perlen',      stat:'pearls',  scope:'total', n:500,  rew:150},
   {id:'tf10',  txt:'Lande insgesamt 10 Flips',         stat:'flips',   scope:'total', n:10,   rew:120},
+  {id:'ev_dol',  txt:'Surfe mit einem Delfin',         stat:'dolphin', scope:'run',   n:1,    rew:50},
+  {id:'ev_chest',txt:'Finde eine Schatztruhe',          stat:'chest',   scope:'run',   n:1,    rew:60},
+  {id:'ev_whale',txt:'Sieh einen Wal springen',         stat:'whale',   scope:'run',   n:1,    rew:40},
+  {id:'ev_shard',txt:'Fange 2 Sternsplitter',           stat:'shards',  scope:'run',   n:2,    rew:80},
 ];
 const DAILY_POOL=[
   {id:'dy_d1500', txt:'1500 m in einem Run',     stat:'dist',  scope:'run', n:1500, rew:200},
@@ -106,7 +110,7 @@ const DAILY_POOL=[
   {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
 ];
 let runStats={}, missionTick=0;
-function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0}; }
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0}; }
 resetRunStats();
 function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
 function ensureMissions(){
@@ -229,6 +233,11 @@ const Audio = (()=>{
       boost(){ tone(220,0.3,'sawtooth',0.25,880); noise(0.25,0.2,2000); },
       power(){ tone(520,0.16,'triangle',0.25,1040); tone(780,0.2,'sine',0.18,1180); },
       button(){ tone(440,0.06,'sine',0.15); },
+      dolphin(){ tone(1400,0.07,'sine',0.12,2100); setTimeout(()=>tone(1700,0.08,'sine',0.11,2500),90); },
+      whale(){ tone(90,1.4,'sine',0.28,60); tone(140,1.1,'triangle',0.12,95); },
+      splash(){ noise(0.6,0.45,900); },
+      chest(){ [660,880,1100,1320].forEach((f,i)=>setTimeout(()=>tone(f,0.16,'triangle',0.2,f*1.5),i*70)); },
+      chime(){ [880,1175,1480].forEach((f,i)=>setTimeout(()=>tone(f,0.5,'sine',0.12),i*90)); },
     }
   };
 })();
@@ -334,12 +343,14 @@ function updateParts(dt){
 //////////////////// World entities ////////////////////
 let ents=[]; // {type,x,y,...}
 let lastSpawnX=0;
-const ENT = {PEARL:'pearl',COIN:'coin',ROCK:'rock',JELLY:'jelly',FIN:'fin',BUOY:'buoy',MAGNET:'magnet',SHIELD:'shield',TURBO:'turbo',STAR:'star',TENT:'tent'};
+const ENT = {PEARL:'pearl',COIN:'coin',ROCK:'rock',JELLY:'jelly',FIN:'fin',BUOY:'buoy',MAGNET:'magnet',SHIELD:'shield',TURBO:'turbo',STAR:'star',TENT:'tent',CHEST:'chest',SHARD:'shard'};
+const HAZARDS=new Set([ENT.ROCK,ENT.JELLY,ENT.FIN,ENT.BUOY]);
 
 function resetWorld(){
   ents.length=0; parts.length=0; floaters.length=0;
   lastSpawnX = 700;
   bossState.active=false; bossState.next=2200; bossState.hits=0; bossState.banner=0;
+  resetSea();
 }
 function spawnAhead(px){
   const P = pal(px/PXPM);
@@ -668,6 +679,7 @@ function updatePlay(dt){
   maybeBoss();
   updateEntities(dt,P);
   updateBoss(dt);
+  updateSea(dt,P);
 
   // cull behind
   for(let i=ents.length-1;i>=0;i--){ if(ents[i].x < player.x - W*0.6) ents.splice(i,1); }
@@ -748,6 +760,7 @@ function updateEntities(dt,P){
           runStats.nearMiss++; checkMissions();
           floatText(sx(e.x),worldToScreenY(e.y)-64,'KNAPP! +10','#ff9e6b',18); Audio.sfx.power(); } } }
     if(e.type===ENT.BUOY){ e.y=surfaceY(e.x)+Math.sin(perfNow()/400+e.ph)*4; }
+    if(e.type===ENT.CHEST){ e.y=surfaceY(e.x)+Math.sin(perfNow()/350+e.ph)*3; }
     // magnet pull for pearls/coins
     if((e.type===ENT.PEARL||e.type===ENT.COIN) && player.magnet>0 && !e.got){
       const dx=player.x-e.x, dy=player.y-e.y, d=Math.hypot(dx,dy);
@@ -767,6 +780,7 @@ function collide(e,P){
   switch(e.type){
     case ENT.PEARL: {
       e.got=true; let g=1; if(save.surfer==='aya') g=Math.random()<0.1?2:1;
+      if(rainbowActive()) g*=2;
       player.pearls+=g; player.comboTimer=Math.max(player.comboTimer,1.2);
       floatText(sx(e.x),worldToScreenY(e.y),'+'+g,P.foam,14);
       Audio.sfx.collect(player.pearls);
@@ -774,10 +788,20 @@ function collide(e,P){
       break;
     }
     case ENT.COIN: {
-      e.got=true; player.pearls+=5; if(save.surfer==='aya')player.pearls+=1;
-      floatText(sx(e.x),worldToScreenY(e.y),'+5','#ffd36b',16);
+      e.got=true; const cv=5*(rainbowActive()?2:1); player.pearls+=cv; if(save.surfer==='aya')player.pearls+=1;
+      floatText(sx(e.x),worldToScreenY(e.y),'+'+cv,'#ffd36b',16);
       Audio.sfx.collect(9);
       break;
+    }
+    case ENT.CHEST: {
+      e.got=true; const g=randi(40,70)*(rainbowActive()?2:1); player.pearls+=g; runStats.chest++;
+      banner('💰 SCHATZ!','+'+g+' Perlen');
+      for(let i=0;i<30;i++) spawnPart(e.x,e.y-10,rand(-260,260),rand(-520,-120),rand(0.5,1),rand(2,4.5),i%2?'#ffd36b':'#fff4c2',true);
+      Audio.sfx.chest(); cam.shake=Math.max(cam.shake,6); checkMissions(); break;
+    }
+    case ENT.SHARD: {
+      e.got=true; const g=15*(rainbowActive()?2:1); player.pearls+=g; runStats.shards++;
+      floatText(sx(e.x),worldToScreenY(e.y),'🌠 +'+g,'#fff4c2',17); Audio.sfx.chime(); checkMissions(); break;
     }
     case ENT.MAGNET: { e.got=true; player.magnet=8; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'MAGNET','#7fe8ff',16); Audio.sfx.power(); break; }
     case ENT.SHIELD: { e.got=true; player.shield=true; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'SCHILD','#8affc8',16); Audio.sfx.power(); break; }
@@ -839,6 +863,170 @@ function updateBoss(dt){
   }
 }
 
+//////////////////// Lebendiges Meer: Zufalls-Events ////////////////////
+// Ein Event-Director streut regelmäßig eine Überraschung ein, damit sich kein Run gleich anfühlt.
+// Zeit- statt distanzbasiert: bei vollem Tempo legt man ~145 m/s zurück, Distanz-Takt wäre Dauerfeuer.
+const sea={};
+function resetSea(){
+  sea.clock=0; sea.nextT=4.5; sea.last=null;
+  sea.dolphin=null; sea.whale=null;
+  sea.meteors=[]; sea.meteorShower=0; sea.meteorSpawn=0; sea.ambientMeteorT=4;
+  sea.showerT=0; sea.showerA=0; sea.rainbowOn=0; sea.rainbowA=0;
+}
+resetSea();
+const SEA_EVENTS=[
+  {key:'dolphin',  w:1.0, ok:()=>true},
+  {key:'treasure', w:1.0, ok:()=>true},
+  {key:'whale',    w:0.8, ok:()=>true},
+  {key:'meteors',  w:1.6, ok:(P)=>P.starA>0.5},
+  {key:'rainbow',  w:1.0, ok:()=>{ const b=biomeAt(player.dist); return (b.cur.key==='tropic'||b.cur.key==='sunset') && b.t<0.2; }},
+];
+function seaBusy(){ return !!(sea.dolphin || sea.whale || sea.meteorShower>0 || sea.showerT>0 || sea.rainbowOn>0); }
+function rainbowActive(){ return sea.rainbowOn>0; }
+function updateSea(dt,P){
+  sea.clock+=dt;
+  if(sea.clock>=sea.nextT){
+    if(bossState.active || seaBusy()) sea.nextT=sea.clock+2;
+    else {
+      const pool=SEA_EVENTS.filter(e=>e.ok(P) && e.key!==sea.last);
+      let r=Math.random()*pool.reduce((a,e)=>a+e.w,0), ev=pool[0];
+      for(const e of pool){ r-=e.w; if(r<=0){ ev=e; break; } }
+      if(ev){ startSeaEvent(ev.key,P); sea.last=ev.key; }
+      sea.nextT=sea.clock+rand(10,15);
+    }
+  }
+  updateDolphin(dt,P); updateWhale(dt,P); updateMeteors(dt,P); updateRainbow(dt,P);
+}
+function startSeaEvent(k,P){
+  if(k==='dolphin'){
+    sea.dolphin={x:player.x-260, y:surfaceY(player.x-260)+30, vy:0, air:false, t:0, dur:9, nextJump:0.8, ang:0, leaving:false};
+    banner('🐬 DELFIN!','Er springt voraus und zeigt dir Perlen'); runStats.dolphin++; Audio.sfx.dolphin();
+  } else if(k==='whale'){
+    sea.whale={x:player.x+W*0.36, t:0, dur:3.6, out:false, splashed:false};
+    player.pearls+=15; runStats.whale++; banner('🐋 WAL-SPRUNG!','+15 Perlen – Glücksbringer'); Audio.sfx.whale();
+  } else if(k==='treasure'){
+    spawnTreasure(); banner('💰 SCHATZSPUR!','Folge den Münzen zur Truhe');
+  } else if(k==='meteors'){
+    sea.meteorShower=6; spawnShards(); banner('🌠 STERNSCHNUPPEN!','Spring und fang die Sternsplitter');
+  } else if(k==='rainbow'){
+    sea.showerT=2.2; banner('🌦 SONNENREGEN','Gleich gibt es einen Regenbogen …');
+  }
+  checkMissions();
+}
+
+// --- 🐬 Delfin: schwimmt mit, springt voraus und legt eine Perlenspur auf deinen Weg ---
+function updateDolphin(dt,P){
+  const d=sea.dolphin; if(!d) return;
+  d.t+=dt; if(!d.leaving && d.t>d.dur) d.leaving=true;
+  const target = d.leaving ? player.x+W*1.3 : player.x+110;
+  d.x += (player.vx + (target-d.x)*1.6)*dt;
+  const s=surfaceY(d.x);
+  if(d.air){
+    d.vy += 1500*dt; d.y += d.vy*dt; d.ang=Math.atan2(d.vy, Math.max(300,player.vx));
+    if(d.y>s+6 && d.vy>0){ d.air=false; spray(d.x,s,1,10,P.foam); d.nextJump=rand(1.1,1.7); }
+  } else {
+    d.y=lerp(d.y, s+24, 1-Math.exp(-dt*6)); d.ang=Math.atan(surfaceSlope(d.x))*0.6;
+    d.nextJump-=dt;
+    if(d.nextJump<=0 && !d.leaving){ d.air=true; d.vy=-640; spray(d.x,s,1,8,P.foam); dolphinPearls(); Audio.sfx.dolphin(); }
+  }
+  if(d.leaving && d.x>player.x+W) sea.dolphin=null;
+}
+function dolphinPearls(){
+  const x0=player.x+player.vx*0.55+80; // knapp über dem Wasser -> beim Weiterreiten automatisch einsammelbar
+  for(let i=0;i<6;i++){ const px=x0+i*34; ents.push({type:ENT.PEARL,x:px,y:surfaceY(px)-22,r:9,got:false}); }
+}
+function drawDolphin(P){
+  const d=sea.dolphin; if(!d) return;
+  const X=sx(d.x), Y=d.y-cam.y;
+  if(X<-80||X>W+80) return;
+  ctx.save(); ctx.translate(X,Y); ctx.rotate(d.ang); ctx.globalAlpha = d.y>surfaceY(d.x)+4 ? 0.45 : 1;
+  const g=ctx.createLinearGradient(0,-12,0,12); g.addColorStop(0,'#5f8fb5'); g.addColorStop(0.55,'#7fa9c9'); g.addColorStop(0.6,'#e6f2f9'); g.addColorStop(1,'#d4e6f0');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(30,2);
+  ctx.quadraticCurveTo(24,-12,4,-12); ctx.quadraticCurveTo(-18,-11,-30,-2); ctx.lineTo(-30,3); ctx.quadraticCurveTo(-10,12,14,9); ctx.quadraticCurveTo(26,8,30,2); ctx.fill();
+  ctx.fillStyle='#4f7ea5';
+  ctx.beginPath(); ctx.moveTo(-2,-11); ctx.quadraticCurveTo(-6,-24,-14,-22); ctx.quadraticCurveTo(-10,-16,-10,-10); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-28,0); ctx.lineTo(-40,-9); ctx.quadraticCurveTo(-35,0,-40,9); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(4,7,8,3,0.7,0,TAU); ctx.fill();
+  ctx.fillStyle='#10202c'; ctx.beginPath(); ctx.arc(18,-2,1.8,0,TAU); ctx.fill();
+  ctx.restore();
+}
+
+// --- 🐋 Wal: bricht vor dir durch die Oberfläche (hinter dem Wasser gezeichnet -> echtes Auftauchen) ---
+function updateWhale(dt,P){
+  const w=sea.whale; if(!w) return;
+  w.t+=dt; w.x = player.x + W*0.36 - w.t*45; // schwimmt mit, du ziehst langsam vorbei
+  const u=w.t/w.dur;
+  if(!w.out && u>0.14){ w.out=true; spray(w.x+40,surfaceY(w.x+40),1,26,'#ffffff'); }
+  if(!w.splashed && u>0.8){ w.splashed=true; const s=surfaceY(w.x);
+    for(let i=0;i<46;i++) spawnPart(w.x+rand(-60,60), s, rand(-320,320), rand(-640,-180), rand(0.6,1.2), rand(2,6), i%3?'#ffffff':P.foam, true);
+    cam.shake=Math.max(cam.shake,7); Audio.sfx.splash(); }
+  if(w.t>w.dur) sea.whale=null;
+}
+function drawWhale(P){
+  const w=sea.whale; if(!w) return;
+  const u=clamp(w.t/w.dur,0,1), sc=clamp(W/900,0.6,1);
+  const h=(Math.sin(u*Math.PI)*190-70)*sc;
+  const X=sx(w.x), Y=surfaceY(w.x)-h-cam.y;
+  const L=170;
+  ctx.save(); ctx.translate(X,Y); ctx.rotate(lerp(-1.15,1.15,u)); ctx.scale(sc,sc);
+  const Hh=46, g=ctx.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,'#2c4a66'); g.addColorStop(0.55,'#3d5f7e'); g.addColorStop(0.56,'#c9dbe6'); g.addColorStop(1,'#a9c2d2');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(L*0.55,0);
+  ctx.bezierCurveTo(L*0.5,-Hh, -L*0.2,-Hh*0.9, -L*0.45,-Hh*0.25); ctx.lineTo(-L*0.55,-4); ctx.lineTo(-L*0.55,4);
+  ctx.lineTo(-L*0.45,Hh*0.25); ctx.bezierCurveTo(-L*0.2,Hh*0.8, L*0.5,Hh, L*0.55,0); ctx.fill();
+  ctx.fillStyle='#2c4a66'; ctx.beginPath(); ctx.moveTo(-L*0.55,0); ctx.lineTo(-L*0.75,-26); ctx.quadraticCurveTo(-L*0.66,0,-L*0.75,26); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#34546f'; ctx.beginPath(); ctx.ellipse(L*0.12,Hh*0.55,34,9,0.6,0,TAU); ctx.fill();
+  ctx.strokeStyle='rgba(60,90,110,.45)'; ctx.lineWidth=1.5;
+  for(let i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(L*0.45-i*4,8+i*7); ctx.quadraticCurveTo(L*0.1,14+i*8,-L*0.05,10+i*7); ctx.stroke(); }
+  ctx.fillStyle='#0d1a26'; ctx.beginPath(); ctx.arc(L*0.36,4,3.2,0,TAU); ctx.fill();
+  ctx.restore();
+}
+
+// --- 💰 Schatztruhe: Münzspur ohne Hindernisse, am Ende eine Truhe ---
+function spawnTreasure(){
+  const x0=player.x+W+160, chx=x0+8*44+60;
+  for(let i=ents.length-1;i>=0;i--){ const e=ents[i]; if(HAZARDS.has(e.type) && e.x>x0-120 && e.x<chx+160) ents.splice(i,1); }
+  for(let i=0;i<8;i++){ const cx=x0+i*44; ents.push({type:ENT.COIN,x:cx,y:surfaceY(cx)-22,r:11,got:false,spin:i*0.4}); }
+  ents.push({type:ENT.CHEST,x:chx,y:surfaceY(chx),r:24,ph:rand(TAU)});
+  lastSpawnX=Math.max(lastSpawnX, chx+160);
+}
+
+// --- 🌠 Sternschnuppen (nur nachts): Sternsplitter in Sprunghöhe + Schnuppen am Himmel ---
+function spawnShards(){
+  let x=player.x+W+200;
+  for(let i=0;i<4;i++){ ents.push({type:ENT.SHARD,x,y:surfaceY(x)-rand(75,115),r:14,ph:rand(TAU)}); x+=rand(650,900); }
+}
+function spawnMeteor(){ const sp=rand(700,1100), a=rand(2.45,2.75);
+  sea.meteors.push({x:rand(W*0.3,W*1.1), y:rand(-20,H*0.25), vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:rand(0.5,0.9)}); }
+function updateMeteors(dt,P){
+  if(sea.meteorShower>0){ sea.meteorShower-=dt; sea.meteorSpawn-=dt; if(sea.meteorSpawn<=0){ spawnMeteor(); sea.meteorSpawn=rand(0.15,0.4); } }
+  else if(P.starA>0.5){ sea.ambientMeteorT-=dt; if(sea.ambientMeteorT<=0){ spawnMeteor(); sea.ambientMeteorT=rand(3,7); } }
+  for(let i=sea.meteors.length-1;i>=0;i--){ const m=sea.meteors[i]; m.life-=dt; m.x+=m.vx*dt; m.y+=m.vy*dt; if(m.life<=0) sea.meteors.splice(i,1); }
+}
+function drawMeteors(){
+  for(const m of sea.meteors){ const a=clamp(m.life/0.25,0,1), tx=m.x-m.vx*0.09, ty=m.y-m.vy*0.09;
+    const g=ctx.createLinearGradient(m.x,m.y,tx,ty); g.addColorStop(0,`rgba(255,250,225,${0.95*a})`); g.addColorStop(1,'rgba(255,250,225,0)');
+    ctx.save(); ctx.strokeStyle=g; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(m.x,m.y); ctx.lineTo(tx,ty); ctx.stroke();
+    ctx.fillStyle=`rgba(255,255,240,${a})`; ctx.beginPath(); ctx.arc(m.x,m.y,2.2,0,TAU); ctx.fill(); ctx.restore(); }
+}
+
+// --- 🌈 Sonnenregen -> Regenbogen: solange er steht, zählen Perlen doppelt ---
+function updateRainbow(dt,P){
+  if(sea.showerT>0){ sea.showerT-=dt;
+    if(sea.showerT<=0){ sea.rainbowOn=7; banner('🌈 REGENBOGEN!','Perlen zählen jetzt doppelt'); Audio.sfx.chime(); } }
+  if(sea.rainbowOn>0){ sea.rainbowOn-=dt; if(P.rainA>0.25||P.starA>0.3) sea.rainbowOn=Math.min(sea.rainbowOn,1.2); }
+  sea.showerA=lerp(sea.showerA, sea.showerT>0?1:0, 1-Math.exp(-dt*2));
+  const tgt = sea.rainbowOn>1.2 ? 1 : Math.max(0, sea.rainbowOn/1.2);
+  sea.rainbowA=lerp(sea.rainbowA, tgt, 1-Math.exp(-dt*2));
+}
+function drawRainbow(a){
+  const R=Math.min(W*0.7,H*0.6), cx=W*0.5, cy=H*0.78;
+  const cols=['#ff4a4a','#ff9a3a','#ffe14a','#4ae06a','#4ab8ff','#6a5cff','#b45cff'];
+  ctx.save(); ctx.globalAlpha=0.34*a; ctx.lineWidth=Math.max(5,R*0.03);
+  cols.forEach((c,i)=>{ ctx.strokeStyle=c; ctx.beginPath(); ctx.arc(cx,cy,R-i*ctx.lineWidth,Math.PI,0); ctx.stroke(); });
+  ctx.restore();
+}
+
 //////////////////// Game over ////////////////////
 function gameOver(){
   if(state!=='play') return;
@@ -881,6 +1069,7 @@ function drawBackground(P,dist){
     }
     ctx.restore();
   }
+  if(dist>0) drawMeteors();
 
   // sun / moon
   const sunX=W*0.72, sunY=H*0.26 - Math.sin(dist/1500)*20;
@@ -893,6 +1082,7 @@ function drawBackground(P,dist){
   ctx.globalCompositeOperation='screen'; ctx.globalAlpha=0.10;
   for(let i=0;i<10;i++){ ctx.save(); ctx.translate(sunX,sunY); ctx.rotate(i/10*TAU + perfNow()/9000); ctx.fillStyle=P.sunGlow; ctx.fillRect(0,-6,700,12); ctx.restore(); }
   ctx.restore();
+  if(dist>0 && sea.rainbowA>0.01) drawRainbow(sea.rainbowA);
 
   // distant islands / clouds parallax
   if(P.islands){
@@ -901,8 +1091,8 @@ function drawBackground(P,dist){
     for(let i=-1;i<3;i++){
       const bx = -off + i*(W*0.6) - 100;
       ctx.fillStyle=mixHex(P.water[2],'#2b2b3a',0.3);
-      // Insel läuft bis unter den Bildschirmrand weiter (keine harte Kante bei hoher Kamera)
-      ctx.beginPath(); ctx.moveTo(bx,H+20); ctx.lineTo(bx,H*0.56); ctx.quadraticCurveTo(bx+120,H*0.4,bx+240,H*0.56); ctx.lineTo(bx+240,H+20); ctx.closePath(); ctx.fill();
+      // Insel sitzt auf dem Horizont-Meer (das darunter gezeichnet wird)
+      ctx.beginPath(); ctx.moveTo(bx,H*0.565); ctx.quadraticCurveTo(bx+120,H*0.4,bx+240,H*0.565); ctx.closePath(); ctx.fill();
       // palm
       ctx.strokeStyle=mixHex(P.water[2],'#1a1a10',0.4); ctx.lineWidth=4;
       ctx.beginPath(); ctx.moveTo(bx+180,H*0.52); ctx.quadraticCurveTo(bx+192,H*0.44,bx+178,H*0.4); ctx.stroke();
@@ -917,6 +1107,11 @@ function drawBackground(P,dist){
     for(let i=-1;i<4;i++){ const bx=-off+i*360; const by=H*(0.18+0.08*((i+2)%3)); ctx.beginPath(); ctx.ellipse(bx,by,80,26,0,0,TAU); ctx.ellipse(bx+60,by+8,60,20,0,0,TAU); ctx.fill(); }
     ctx.restore();
   }
+  // Horizont-Meer: fernes Wasserband – sichtbar, wenn die Kamera bei hohen Sprüngen über die Welle steigt
+  { const hy=H*0.56, hg=ctx.createLinearGradient(0,hy,0,H);
+    hg.addColorStop(0,mixHex(P.water[0],P.sky[1],0.45)); hg.addColorStop(1,P.water[1]);
+    ctx.save(); ctx.fillStyle=hg; ctx.fillRect(0,hy,W,H-hy+2);
+    ctx.fillStyle=rgba(P.foam,0.35); ctx.fillRect(0,hy,W,1.5); ctx.restore(); }
 
   // gulls
   if(P.gulls){ ctx.save(); ctx.strokeStyle='rgba(40,40,50,.5)'; ctx.lineWidth=2;
@@ -1048,6 +1243,25 @@ function drawEntities(P){
       case ENT.SHIELD: powerIcon(X,Y,e.r,'🛡','#8affc8'); break;
       case ENT.TURBO:  powerIcon(X,Y,e.r,'⚡','#ffb03a'); break;
       case ENT.STAR:   powerIcon(X,Y,e.r,'★','#ffe36b'); break;
+      case ENT.CHEST: {
+        ctx.save(); ctx.translate(X,Y-12);
+        const gl=ctx.createRadialGradient(0,0,4,0,0,46); gl.addColorStop(0,'rgba(255,211,107,.55)'); gl.addColorStop(1,'rgba(255,211,107,0)');
+        ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(0,0,46,0,TAU); ctx.fill();
+        ctx.fillStyle='#8a5a2b'; roundRect(-20,-6,40,22,4); ctx.fill();
+        ctx.fillStyle='#a8703a'; ctx.beginPath(); ctx.moveTo(-20,-6); ctx.quadraticCurveTo(0,-24,20,-6); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#ffd36b'; ctx.fillRect(-20,-7,40,3); ctx.fillRect(-3,-12,6,26);
+        ctx.fillStyle='#fff4c2'; ctx.fillRect(-2,2,4,5);
+        const sp=(perfNow()/400+e.ph)%1; ctx.globalAlpha=1-sp; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(10,-14-sp*10,2.2,0,TAU); ctx.fill();
+        ctx.restore();
+        ctx.save(); ctx.fillStyle=rgba(P.foam,0.5); ctx.beginPath(); ctx.ellipse(X,Y+2,24,4,0,0,Math.PI); ctx.fill(); ctx.restore();
+        break; }
+      case ENT.SHARD: {
+        const tw=0.8+0.2*Math.sin(perfNow()/120+e.ph);
+        ctx.save(); const gl=ctx.createRadialGradient(X,Y,1,X,Y,26); gl.addColorStop(0,'rgba(255,248,200,.9)'); gl.addColorStop(1,'rgba(255,248,200,0)');
+        ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(X,Y,26,0,TAU); ctx.fill();
+        ctx.translate(X,Y); ctx.rotate(perfNow()/700); ctx.scale(tw,tw); ctx.fillStyle='#fffbe0';
+        ctx.beginPath(); for(let k=0;k<8;k++){ const rr=k%2?4:14, a=k*Math.PI/4; ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr); } ctx.closePath(); ctx.fill();
+        ctx.restore(); break; }
     }
   }
   // boss tentacles
@@ -1156,12 +1370,13 @@ function drawPlayer(P){
 //////////////////// Weather overlays ////////////////////
 let rainDrops=[]; for(let i=0;i<160;i++) rainDrops.push({x:Math.random(),y:Math.random(),s:rand(0.5,1)});
 function drawWeather(P){
-  if(P.rainA>0.02){
-    ctx.save(); ctx.globalAlpha=P.rainA*0.5; ctx.strokeStyle='rgba(200,225,235,.6)'; ctx.lineWidth=1.5;
+  const rainA=Math.max(P.rainA, sea.showerA*0.55); // Sturm oder Sonnenregen-Event
+  if(rainA>0.02){
+    ctx.save(); ctx.globalAlpha=rainA*0.5; ctx.strokeStyle='rgba(200,225,235,.6)'; ctx.lineWidth=1.5;
     for(const d of rainDrops){ d.y=(d.y+0.03*d.s)%1; const rx=(d.x*W - cam.x*0.3)%W; const ry=d.y*H; ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-6,ry+18); ctx.stroke(); }
     ctx.restore();
-    // lightning flash
-    if(Math.random()<0.004){ ctx.save(); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(0,0,W,H); ctx.restore(); Audio.sfx.land(false); }
+    // Blitze nur im echten Sturm
+    if(P.rainA>0.3 && Math.random()<0.004){ ctx.save(); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fillRect(0,0,W,H); ctx.restore(); Audio.sfx.land(false); }
   }
   // fog / vignette in storm & night
   const {cur,nxt,t}=biomeAt(player.dist);
@@ -1212,6 +1427,7 @@ function drawHUD(P){
   if(player.magnet>0) powers.push(['🧲 Magnet', player.magnet/8]);
   if(player.turbo>0) powers.push(['⚡ Turbo', player.turbo/2.4]);
   if(player.star>0) powers.push(['★ Unbesiegbar', player.star/6]);
+  if(rainbowActive()) powers.push(['🌈 Perlen x2', sea.rainbowOn/7]);
   for(const [lbl,frac] of powers){ ctx.fillStyle='rgba(0,0,0,.3)'; roundRect(px-120,py,120,20,10); ctx.fill();
     ctx.fillStyle='#fff'; ctx.fillText(lbl,px-8,py+3);
     ctx.fillStyle=rgba(P.accent,0.9); roundRect(px-120,py+17,120*clamp(frac,0,1),3,2); ctx.fill(); py+=26; }
@@ -1408,9 +1624,11 @@ function drawScene(){
   ctx.save(); ctx.translate(shakeX,shakeY);
   if(viewZoom>1.004){ const zx=sx(player.x), zy=player.y-cam.y; ctx.translate(zx,zy); ctx.scale(viewZoom,viewZoom); ctx.translate(-zx,-zy); }
   drawBackground(P,player.dist);
+  drawWhale(P);   // vor dem Wasser: der Teil unter der Oberfläche wird verdeckt
   drawWater(P);
   drawChaser(P);
   drawEntities(P);
+  drawDolphin(P);
   // particles behind/over water
   for(const p of parts){ ctx.save(); ctx.globalAlpha=clamp(p.life/p.max,0,1); if(p.glow) ctx.globalCompositeOperation='screen';
     ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(sx(p.x),p.y-cam.y,p.r,0,TAU); ctx.fill(); ctx.restore(); }

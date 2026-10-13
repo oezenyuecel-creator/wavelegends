@@ -47,6 +47,8 @@ dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen 
 - **Boss-Setpiece**: ⚠ **KRAKEN** — Tentakel-Walls, über die du springen musst (+Perlen-Belohnung)
 - **Sammeln**: Perlen (Währung, teils knapp über dem Wasser sammelbar, teils als Air-Bögen) & Goldmünzen
 - **Power-Ups**: 🧲 Magnet · 🛡 Schild · ⚡ Turbo · ★ Unbesiegbar (mit HUD-Anzeige + Timer)
+- **Lebendiges Meer** 🐬: ein Event-Director streut alle 10–15 s eine Überraschung ein (erste nach ~5 s):
+  🐬 **Delfin** schwimmt mit und legt bei jedem Sprung eine Perlenspur auf deinen Weg · 🐋 **Wal-Sprung** bricht vor dir durch die Oberfläche (+15 Perlen) · 💰 **Schatzspur**: hindernisfreie Münzspur bis zu einer Truhe (40–70 Perlen) · 🌠 **Sternschnuppen** (nachts): Sternsplitter in Sprunghöhe fangen · 🌈 **Sonnenregen → Regenbogen**: solange er steht, zählen Perlen doppelt. Dazu 4 neue Missionen.
 - **Missionen & Daily Challenge** 🎯: 3 aktive Missionen (Pool von 18: Distanz, Perlen, Tricks, Flips, Grabs, Combos, Hai-Near-Miss, Boss, „ohne Wipeout" …) — erfüllte werden nach dem Run automatisch ersetzt; dazu täglich 1 ★ Tages-Challenge mit großem Perlen-Bonus. Fortschritt zählt live im Run, Belohnung kommt sofort mit Banner.
 - **Progression**: Perlen fließen in ein dauerhaftes Konto (localStorage), Highscore, Run-Zähler
 - **Shop** (fair, **kein Pay-to-Win**): 6 Boards & 5 Surfer — nur leichte Gameplay-Tweaks + kleine Perks
