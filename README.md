@@ -12,6 +12,14 @@ Der Spieler ist ein Surfer, der ein **lebendiges Meer** abreitet. Das Meer ist d
 verändert Wellenhöhe, Licht, Wetter und Tageszeit. Keine Runde fühlt sich gleich an. Leicht zu lernen,
 schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 
+## Surf-Schule (Tutorial)
+Beim ersten Start führt eine Mitmach-Schule in 5 Schritten durch das Spiel — jeder Schritt wartet, bis man ihn
+geschafft hat: ① Halten = Speed (⚡-Balken leuchtet) · ② Loslassen = Springen · ③ echter Fels mit ⚠-Warnung
+(„gleich …" → „JETZT!") · ④ Flip in drei geführten Teilschritten mit Zeitlupe · ⑤ die Monsterwelle. Ein
+Daumen-Hinweis unten zeigt immer, was zu tun ist. Währenddessen keine Haie/Bosse, die Welle frisst nicht;
+danach geht es nahtlos in den echten Lauf („LOS GEHT'S!"). Überspringbar, im Menü über „❓ Surf-Schule"
+jederzeit wiederholbar.
+
 ## So wirst du gut
 - **Speed aufbauen**: auf der Welle **gedrückt halten** — du pumpst die Abwärts-Flanke runter (fast doppelt so schnell wie ohne) und verlierst bergauf kaum Tempo. Der ⚡-Balken oben links zeigt es. Nur zum **Springen** loslassen, am besten oben am Wellenkamm.
 - **Perfekter Flip**: abspringen → in der Luft **neu drücken und halten** → das Board dreht mit festem Tempo (ein Flip ≈ ½ Sekunde) → **loslassen, sobald der Ring um den Surfer GRÜN ist**. Loslassen stoppt die Drehung sofort, ein Lande-Assistent richtet das Board auf die Welle aus. Bei Mini-Hüpfern (Ring bleibt rot) lieber nicht flippen.

@@ -113,7 +113,7 @@ const DAILY_POOL=[
   {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
 ];
 let runStats={}, missionTick=0;
-function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[],gatesSeen:0}; }
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[],gatesSeen:0,releaseJumps:0}; }
 resetRunStats();
 function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
 function ensureMissions(){
@@ -391,6 +391,7 @@ const HAZARDS=new Set([ENT.ROCK,ENT.JELLY,ENT.FIN,ENT.BUOY]);
 // Landen und Neu-Abspringen (≥1,3 s; Haie ≥1,6 s, nie in Gruppen). Vorher lagen 43% aller Paare dazwischen.
 let lastHzX=-1e9, lastHzShark=false;
 function hazardSlotOk(hx, shark){
+  if(tut.active) return false;                // Surf-Schule: Hindernisse kommen nur gezielt aus dem Tutorial
   if(hx < 2600) return false;                 // Aufwärmphase: die ersten ~3 s ohne Hindernisse
   const v=Math.max(player.vx*1.2, 800);       // vorsichtig schätzen: bis du ankommst, bist du evtl. schneller
   const gap=(hx-lastHzX)/v;
@@ -521,7 +522,9 @@ function press(x,y){
   if(state==='unlock'){ unlockClick(x,y); return; }
   if(state==='shop'){ shopClick(x,y); return; }
   if(state==='over'){ overClick(x,y); return; }
-  if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); }
+  if(state==='play'){
+    if(tut.active && hitButton(x,y)==='tut_skip'){ endTutorial(true); return; } // kein Sprung beim Überspringen
+    player.holding=true; if(player.air) player.airPressAt=performance.now(); }
   if(state==='pause'){ /* handled via button */ pauseClick(x,y); }
   hud.hintFade=true;
 }
@@ -579,6 +582,7 @@ function startGame(){
   state='play'; save.runs++; persist();
   Audio.resume(); Audio.setActive(true);
   document.getElementById('hint').style.opacity='0';
+  if(!save.tutorialDone) startTutorial(); else tut.active=false;
 }
 
 //////////////////// Physics / update ////////////////////
@@ -621,6 +625,7 @@ function updatePlay(dt){
       player.vy = Math.min(0, slope*player.vx) - pop*B.air;
       player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0; player.rotNet=0; player.flipsShown=0; player.spinArmed=!player.holding; player.spinHoldT=0;
       player.angle=Math.atan(slope);
+      runStats.releaseJumps++;
       Audio.sfx.jump();
       spray(sx(player.x)+cam.x, player.y, 1, 8, P.foam);
     } else {
@@ -736,7 +741,7 @@ function updatePlay(dt){
   player.chaserX = player.x - player.waveGap;
   const gap = player.waveGap;
   if(gap < 46){ player.deathBy='wave'; Audio.sfx.crash(); cam.shake=20; spray(sx(player.x)+cam.x, player.y, -1, 30, '#ffffff'); gameOver(); }
-  else if(gap < 620 && !player._warned){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!'); }
+  else if(gap < 620 && !player._warned && !tut.active){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!'); }
   else if(gap > 760) player._warned=false;
 
   // ----- world spawns -----
@@ -745,6 +750,7 @@ function updatePlay(dt){
   updateEntities(dt,P);
   updateBoss(dt);
   updateSea(dt,P);
+  updateTutorial(dt);
 
   // cull behind
   for(let i=ents.length-1;i>=0;i--){ if(ents[i].x < player.x - W*0.6) ents.splice(i,1); }
@@ -1596,6 +1602,7 @@ function drawMenu(){
   btn('shop', bx, H*0.62+126, bw*0.48, 44, '🛍  Shop', {c1:'#ffb84d',c2:'#e07a2b',fs:15});
   btn('sound', bx+bw*0.52, H*0.62+126, bw*0.48, 44, save.soundOn?'🔊 Ton':'🔇 Ton', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
   if(!save.fullVersion) btn('full', W-150, 16, 134, 36, '🌙 Vollversion', {c1:'#7a5cff',c2:'#4a2fc0',fs:14});
+  btn('tutorial', 16, 16, 134, 36, '❓ Surf-Schule', {c1:'#2f8fb0',c2:'#1d6a86',fs:14});
   drawButtons();
   // stats footer
   ctx.save(); ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.7)';
@@ -1606,6 +1613,7 @@ function menuClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.butt
   if(id==='play') startGame();
   else if(id==='missions'){ ensureDaily(); state='missions'; }
   else if(id==='full') openUnlock('menu');
+  else if(id==='tutorial'){ save.tutorialDone=false; startGame(); }
   else if(id==='shop'){ state='shop'; shopTab='boards'; }
   else if(id==='sound'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 }
@@ -1700,6 +1708,106 @@ function shopClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.butt
   else if(id.startsWith('use_')){ const k=id.slice(4); if(shopTab==='boards') save.board=k; else save.surfer=k; persist(); }
   else if(id.startsWith('buy_')){ const k=id.slice(4); const it=(shopTab==='boards'?BOARDS:SURFERS)[k];
     if(save.pearls>=it.price){ save.pearls-=it.price; if(shopTab==='boards'){save.ownedBoards.push(k); save.board=k;} else {save.ownedSurfers.push(k); save.surfer=k;} Audio.sfx.power(); persist(); } }
+}
+
+//////////////////// Surf-Schule (Tutorial) ////////////////////
+// Jeder Schritt wartet, bis der Spieler ihn wirklich geschafft hat. Währenddessen: keine Haie/Bosse/Events,
+// die Welle kann nicht fressen. Danach geht es nahtlos in den echten Lauf.
+const TUT_STEPS=[
+  {title:'Speed aufbauen', text:'Halte gedrückt – du pumpst die Welle runter und wirst schneller. Sieh, wie der ⚡-Balken steigt.', cue:'hold', hl:'speed'},
+  {title:'Springen',       text:'Lass los, um abzuspringen.', cue:'release'},
+  {title:'Hindernisse',    text:'', cue:'hold'},
+  {title:'Flip',           text:'', cue:'release'},
+  {title:'Die Monsterwelle', text:'Hinter dir rollt die Welle. Jeder Wipeout lässt sie aufholen – sauber surfen hält sie fern.', cue:null, hl:'wave'},
+];
+const tut={active:false, step:0, t:0, holdT:0, rock:null, msg:'', msgT:0, flips0:0, wipes0:0, rj0:0};
+function tutSnapshot(){ tut.flips0=runStats.flips; tut.wipes0=runStats.wipeLog.length; tut.rj0=runStats.releaseJumps; }
+function startTutorial(){
+  Object.assign(tut,{active:true, step:0, t:0, holdT:0, rock:null, msg:'', msgT:0}); tutSnapshot();
+  sea.nextT=1e9; bossState.next=1e9;
+}
+function endTutorial(skipped){
+  tut.active=false; tut.rock=null; save.tutorialDone=true; persist(); uiButtons=[];
+  player.waveGap=WAVE_CAP; player._warned=false;
+  sea.nextT=sea.clock+5; bossState.next=Math.max(2200, player.dist+900);
+  lastHzX=player.x+Math.max(player.vx,700)*1.2; // kurze Schonfrist, bevor zufällige Hindernisse kommen
+  if(!skipped){ banner("🏄 LOS GEHT'S!",'Du bist bereit – viel Spaß!'); Audio.sfx.power(); }
+}
+function tutNext(){ tut.step++; tut.t=0; tut.holdT=0; tutSnapshot(); Audio.sfx.chime(); if(tut.step>=TUT_STEPS.length) endTutorial(false); }
+function tutHint(m){ tut.msg=m; tut.msgT=2; }
+function spawnTutRock(){
+  const x=player.x+Math.max(player.vx,650)*2.4;
+  tut.rock={type:ENT.ROCK, x, y:surfaceY(x), r:26}; ents.push(tut.rock); tut.wipes0=runStats.wipeLog.length;
+}
+function tutFlipPhase(){ if(!player.air) return 'jump'; if(!player.holding && player.rotAccum<0.4) return 'press'; return 'release'; }
+function updateTutorial(dt){
+  if(!tut.active) return;
+  tut.t+=dt; if(tut.msgT>0) tut.msgT-=dt;
+  if(tut.step<4) player.waveGap=WAVE_CAP;
+  else player.waveGap=Math.max(420, lerp(player.waveGap, 460, 1-Math.exp(-dt*2))); // Welle kurz zeigen, aber nie fressen
+  const s=tut.step;
+  if(s===0){ if(player.holding && !player.air) tut.holdT+=dt; if(tut.holdT>1.3){ tutHint('✓ Spürst du den Speed?'); tutNext(); } }
+  else if(s===1){ if(runStats.releaseJumps>tut.rj0){ tutHint('✓ Super!'); tutNext(); } }
+  else if(s===2){
+    if(!tut.rock) spawnTutRock();
+    else if(tut.rock.x < player.x-40){
+      if(runStats.wipeLog.length>tut.wipes0){ tutHint('Fast! Nochmal – spring, wenn „JETZT" erscheint.'); spawnTutRock(); }
+      else { tutHint('✓ Sauber drüber!'); tut.rock=null; tutNext(); }
+    }
+  }
+  else if(s===3){
+    if(player.air) player.slowT=Math.max(player.slowT,0.12); // Zeitlupe zum Üben
+    if(runStats.flips>tut.flips0){ tutHint('✓ Flip gestanden!'); tutNext(); }
+    else if(runStats.wipeLog.length>tut.wipes0){ tut.wipes0=runStats.wipeLog.length; tutHint('Knapp! Loslassen, sobald der Ring GRÜN ist.'); }
+  }
+  else if(s===4){ if(tut.t>4.5) tutNext(); }
+}
+function splitLines(txt,maxW){ const out=[]; let line=''; for(const w of txt.split(' ')){ const t=line?line+' '+w:w; if(ctx.measureText(t).width>maxW && line){ out.push(line); line=w; } else line=t; } if(line) out.push(line); return out; }
+function drawTutorial(){
+  if(!tut.active) return;
+  const s=TUT_STEPS[tut.step]; if(!s) return;
+  let text=s.text, cue=s.cue;
+  const held=player.holding; // Hinweise passen sich an: wer nicht drückt, kann nicht "loslassen"
+  if(tut.step===1){ text = held ? 'Lass los, um abzuspringen.' : 'Erst gedrückt halten, dann loslassen = abspringen.'; cue = held?'release':'hold'; }
+  if(tut.step===2){
+    const tta = tut.rock ? (tut.rock.x-player.x)/Math.max(player.vx,300) : 9;
+    if(player.air && tta<=0.6){ text='✈ Drüber!'; cue=null; }
+    else if(tta<=0.5 && tta>0){ text = held ? 'JETZT loslassen – spring drüber!' : 'JETZT tippen – spring drüber!'; cue = held?'release':'tap'; }
+    else if(tta<=WARN_SEC){ text='Da ist das ⚠ – gleich springen …'; cue='hold'; }
+    else { text='Halte gedrückt und surf weiter. Achte auf das ⚠ am rechten Rand.'; cue='hold'; }
+  }
+  if(tut.step===3){ const ph=tutFlipPhase();
+    text = ph==='jump' ? '① Halten, dann loslassen = abspringen.' : ph==='press' ? '② In der Luft: nochmal drücken und halten!' : '③ Loslassen, sobald der Ring GRÜN ist!';
+    cue = ph==='press' ? 'hold' : ph==='jump' ? (held?'release':'hold') : 'release'; }
+  const pad=14, cw=Math.min(W-32,420), x0=(W-cw)/2, y0=136;
+  ctx.save(); ctx.font='600 14px system-ui';
+  const lines=splitLines(text, cw-2*pad), ch=58+lines.length*19;
+  roundRect(x0,y0,cw,ch,16); ctx.fillStyle='rgba(8,24,40,.8)'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,.16)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.font='800 11px system-ui'; ctx.fillStyle='#59f0d6'; ctx.fillText('SURF-SCHULE · '+(tut.step+1)+'/'+TUT_STEPS.length, x0+pad, y0+20);
+  ctx.font='800 18px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(s.title, x0+pad, y0+42);
+  ctx.font='600 14px system-ui'; ctx.fillStyle='rgba(255,255,255,.92)'; lines.forEach((l,i)=>ctx.fillText(l, x0+pad, y0+64+i*19));
+  if(tut.msgT>0){ const ok=tut.msg.startsWith('✓'); ctx.globalAlpha=clamp(tut.msgT/0.4,0,1);
+    ctx.font='800 14px system-ui'; const mw=ctx.measureText(tut.msg).width+28;
+    roundRect((W-mw)/2, y0+ch+10, mw, 30, 15); ctx.fillStyle=ok?'rgba(57,217,138,.92)':'rgba(255,176,58,.92)'; ctx.fill();
+    ctx.fillStyle='#08182a'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(tut.msg, W/2, y0+ch+25); }
+  ctx.restore();
+  if(s.hl){ ctx.save(); ctx.strokeStyle='#ffe36b'; ctx.globalAlpha=0.55+0.45*Math.sin(perfNow()/160); ctx.lineWidth=2.5;
+    roundRect(12, s.hl==='speed'?96:66, 126, 32, 10); ctx.stroke(); ctx.restore(); }
+  if(cue) drawTutCue(cue);
+  uiButtons=[]; btn('tut_skip', x0+cw-112, y0+8, 100, 26, 'Überspringen ›', {c1:'#2a3a52',c2:'#1d2a3d',fs:11}); drawButtons();
+}
+// Daumen-Hinweis: Halten = Ring zieht sich zusammen, Loslassen = Ring springt nach außen, Tippen = schneller Puls
+function drawTutCue(cue){
+  const hold=cue==='hold', tap=cue==='tap', per=tap?600:1200;
+  const x=W/2, y=H-150, p=(perfNow()%per)/per, col=hold?'#59f0d6':'#ffe36b';
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.globalAlpha=1-p*0.8; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y, hold?34-14*p:20+26*p, 0,TAU); ctx.stroke();
+  ctx.globalAlpha=1; ctx.fillStyle=rgba(col,0.28); ctx.beginPath(); ctx.arc(x,y,19,0,TAU); ctx.fill();
+  ctx.font='22px system-ui'; ctx.fillText(hold||tap?'👆':'✋', x, y+1);
+  ctx.font='800 13px system-ui'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=6;
+  ctx.fillText(hold?'GEDRÜCKT HALTEN':tap?'TIPPEN':'LOSLASSEN', x, y+44);
+  ctx.restore();
 }
 
 //////////////////// Vollversion: Vorschau, Kaufseite (Test-Kauf) ////////////////////
@@ -1981,6 +2089,7 @@ function drawScene(withHud=true){
   if(!withHud) return; // Auswertungs-Bildschirm: nur die eingefrorene Szene als Hintergrund
   drawHazardWarnings();
   drawHUD(P);
+  drawTutorial();
 }
 
 //////////////////// Chords per biome ////////////////////
