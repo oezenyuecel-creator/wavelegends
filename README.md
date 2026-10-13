@@ -12,6 +12,11 @@ Der Spieler ist ein Surfer, der ein **lebendiges Meer** abreitet. Das Meer ist d
 verändert Wellenhöhe, Licht, Wetter und Tageszeit. Keine Runde fühlt sich gleich an. Leicht zu lernen,
 schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 
+## So wirst du gut
+- **Speed aufbauen**: auf der Welle **gedrückt halten** — du pumpst die Abwärts-Flanke runter (fast doppelt so schnell wie ohne) und verlierst bergauf kaum Tempo. Der ⚡-Balken oben links zeigt es. Nur zum **Springen** loslassen, am besten oben am Wellenkamm.
+- **Perfekter Flip**: abspringen → in der Luft **neu drücken und halten** → das Board dreht mit festem Tempo (ein Flip ≈ ½ Sekunde) → **loslassen, sobald der Ring um den Surfer GRÜN ist**. Loslassen stoppt die Drehung sofort, ein Lande-Assistent richtet das Board auf die Welle aus. Bei Mini-Hüpfern (Ring bleibt rot) lieber nicht flippen.
+- **Tricks geben Speed**: jeder gelandete Flip beschleunigt dich zusätzlich (+6 % pro Flip).
+
 ## Steuerung (One-Button, mobile-first)
 - **HALTEN** = die Wellenflanke *anpumpen* → Speed aufbauen; am Kamm abheben (loslassen = Absprung-Pop für höhere Airs)
 - **In der Luft HALTEN** = **Flip/Rotation** (Trickpunkte) → rechtzeitig loslassen, um sauber & gerade zu landen
@@ -20,9 +25,11 @@ schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 - Desktop-Test: `Leertaste` / `Pfeil-runter` = Halten, `P` = Pause, `M` = Ton
 
 ## Der Clou: die Monsterwelle 🌊
-Statt „einmal berührt = tot" jagt dich eine **riesige Monsterwelle** von hinten. Hindernisse killen dich
-nicht sofort — sie verursachen **Wipeouts**, die dich verlangsamen, sodass die Welle aufholt. **Speed &
-saubere Tricks = Überleben.** Fair, spannend und thematisch perfekt fürs Surfen.
+Statt „einmal berührt = tot" jagt dich eine **riesige Monsterwelle** von hinten. Ihr Abstand funktioniert
+wie ein Lebensbalken (🌊-Anzeige oben links): sauber surfen schiebt sie zurück — je schneller, desto mehr —,
+jeder **Wipeout** lässt sie um einen festen Betrag heranrollen. **1 Fehler = spürbar, 2 kurz nacheinander =
+Gefahr, 3 in Folge = gefressen.** Immer gleich, unabhängig von Glück mit der Wellenform. Auf schmalen
+Handys kündigt Gischt am linken Rand sie an, bevor sie ins Bild rollt.
 
 **Ausnahme: der Hai. 🦈** Er ist selten, kündigt sich mit pulsierender roter Warn-Aura an — und frisst
 dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen den Hai).

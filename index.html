@@ -15,7 +15,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hint">TIPPEN = springen · HALTEN = pumpen, am Kamm LOSLASSEN = hoher Sprung · Luft: HALTEN = Flip, TIPPEN = Grab</div>
+<div id="hint">HALTEN = Speed aufbauen · LOSLASSEN = springen · Luft: HALTEN = Flip, loslassen wenn der Ring GRÜN ist · TIPPEN = Grab</div>
 <script>
 "use strict";
 /* ============================================================================
@@ -426,13 +426,16 @@ function resetPlayer(){
   player.angle=0; player.angVel=0; player.dist=0; player.pearls=0; player.score=0;
   player.combo=0; player.mult=1; player.comboTimer=0; player.rotAccum=0; player.airTime=0;
   player.wipe=0; player.dead=false; player.shield=false; player.magnet=0; player.turbo=0; player.star=0;
-  player.trail.length=0; player.chaserX=player.x-1400; player._warned=false; player.deathBy=null;
+  player.trail.length=0; player.waveGap=WAVE_CAP-100; player.chaserX=player.x-player.waveGap; player._warned=false; player.deathBy=null;
+  player.rotNet=0; player.flipsShown=0; player.sinceWipe=99;
   player.grabT=0; player.airGrabs=0; player.celebrateT=0; player.slowT=0; player.bigAirFx=false; player.airPressAt=0;
   const B=BOARDS[save.board], S=SURFERS[save.surfer];
   player.B=B; player.S=S;
   // Perks
   if(save.surfer==='luna' && Math.random()<0.5) player.shield=true; // Startschild-Chance
 }
+
+const WAVE_CAP=1200; // max. Vorsprung vor der Monsterwelle (px)
 
 //////////////////// Camera ////////////////////
 const cam={x:0,y:0,shake:0};
@@ -544,7 +547,7 @@ function updatePlay(dt){
       // garantierter Aufwärts-Impuls: Downhill-Tangente darf den Sprung NICHT wegfressen,
       // eine Uphill-Flanke gibt zusätzlich Extra-Höhe
       player.vy = Math.min(0, slope*player.vx) - pop*B.air;
-      player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0;
+      player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0; player.rotNet=0; player.flipsShown=0; player.spinArmed=!player.holding; player.spinHoldT=0;
       player.angle=Math.atan(slope);
       Audio.sfx.jump();
       spray(sx(player.x)+cam.x, player.y, 1, 8, P.foam);
@@ -569,7 +572,7 @@ function updatePlay(dt){
         player.air=true;
         player.vy=surfaceSlope(player.x)*player.vx;
         if(player.holding){ player.vy -= 220*B.air; } // durchgepumpt = etwas mehr Air
-        player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0;
+        player.rotAccum=0; player.airTime=0; player.airStartMult=player.mult; player.bigAirFx=false; player.airGrabs=0; player.grabT=0; player.rotNet=0; player.flipsShown=0; player.spinArmed=!player.holding; player.spinHoldT=0;
         player.angle=Math.atan(surfaceSlope(player.x));
         player.x=nx;
         Audio.sfx.jump();
@@ -588,14 +591,28 @@ function updatePlay(dt){
     player.y+=player.vy*dt;
     player.airTime+=dt;
     // großer Air -> kurze Zeitlupe + Zoom (einmal pro Flug)
-    if(!player.bigAirFx && (player.rotAccum>4.2 || player.airTime>0.9)){ player.bigAirFx=true; player.slowT=Math.max(player.slowT,0.5); }
-    if(player.holding){
-      const dir = -1; // backflip
-      player.angVel += 9*dir*dt* B.turn;
+    if(!player.bigAirFx && (player.rotAccum>TAU*1.6 || player.airTime>0.9)){ player.bigAirFx=true; player.slowT=Math.max(player.slowT,0.5); }
+    // Flip: Halten = konstante Drehung (ein Flip ≈ 0,55 s, passt in einen normalen Sprung),
+    // Loslassen = Drehung stoppt sofort; Lande-Assistent zieht das Board auf die Wellen-Neigung,
+    // wenn du nah dran bist. (Vorher: Beschleunigung + Schwung -> Flip kaum möglich, Überdrehen beim Loslassen.)
+    // Nur ein NEUER Druck in der Luft dreht: wer beim Pumpen über einen Kamm katapultiert wird und
+    // noch hält, soll nicht ungewollt flippen. Kurze Haltezeit trennt Tippen (Grab) von Halten (Flip).
+    const SPIN = 13*B.turn;
+    if(!player.holding){ player.spinArmed=true; player.spinHoldT=0; }
+    else if(player.spinArmed) player.spinHoldT+=dt;
+    if(player.holding && player.spinArmed && player.spinHoldT>0.12){ player.angVel = lerp(player.angVel, -SPIN, 1-Math.exp(-dt*16)); }
+    else {
+      player.angVel = lerp(player.angVel, 0, 1-Math.exp(-dt*14));
+      const la = surfaceAngle(player.x + player.vx*0.12);
+      const d = Math.atan2(Math.sin(la-player.angle), Math.cos(la-player.angle));
+      if(Math.abs(d) < 1.0) player.angle += d*(1-Math.exp(-dt*7));
     }
-    player.angVel*=(1-1.2*dt);
-    player.angle+=player.angVel*dt;
-    player.rotAccum+=Math.abs(player.angVel*dt);
+    player.angle += player.angVel*dt;
+    player.rotNet += player.angVel*dt;
+    player.rotAccum = Math.abs(player.rotNet);
+    const flipsDone = Math.floor((player.rotAccum+0.4)/TAU);
+    if(flipsDone > player.flipsShown){ player.flipsShown=flipsDone;
+      floatText(sx(player.x), worldToScreenY(player.y)-58, flipsDone===1?'↻ FLIP':'↻ x'+flipsDone, '#ffe36b', 16); Audio.sfx.collect(5); }
     // land?
     const gy=surfaceY(player.x);
     if(player.y>=gy && player.vy>0){
@@ -624,11 +641,24 @@ function updatePlay(dt){
   cam.y = lerp(cam.y, targetCamY, dt*4);
   if(cam.shake>0) cam.shake-=dt*60;
 
-  // ----- chaser wave (fail state) -----
-  const chaserV = 330 + Math.min(player.dist*0.18, 600);
-  player.chaserX += chaserV*dt;
-  if(player.x - player.chaserX > 1500) player.chaserX = player.x - 1500;
-  const gap = player.x - player.chaserX;
+  // ----- Monsterwelle (Fail-State) -----
+  // Der Abstand ist ein deterministischer "Lebensbalken" statt Physik: eine Tempo-Simulation machte die
+  // Strafe vom Gelände abhängig (gleicher Fehler kostete mal 750, mal 870 px) und eine reine
+  // Distanz-Rampe war ein Timer. Jetzt: sauber surfen schiebt sie zurück (je schneller, desto mehr),
+  // jeder Wipeout lässt sie um einen festen Betrag heranrollen, zu langsames Surfen zieht sie heran.
+  // => 1 Fehler spürbar, 2 kurz nacheinander gefährlich, 3 in Folge = gefressen.
+  const floorV = 400 + Math.min(player.dist*0.05, 250);
+  const wipePenalty = 450 + Math.min(player.dist*0.02, 100);
+  const regen = 40 + player.vx*0.04 - Math.min(player.dist*0.005, 20);
+  player.sinceWipe = player.wipe>0 ? 0 : player.sinceWipe+dt;
+  let gapRate;
+  if(player.wipe>0) gapRate = -wipePenalty/0.75;               // Strafe über die Wipeout-Dauer verteilt (sichtbares Heranrollen)
+  // Langsam-Strafe nicht in der Erholungsphase nach einem Wipeout — sonst zählt jeder Fehler doppelt
+  else if(player.vx < floorV && player.star<=0 && player.sinceWipe>3) gapRate = -(floorV-player.vx)*0.6;
+  else gapRate = regen + (player.turbo>0 ? 220 : 0);
+  player.waveGap = Math.min(WAVE_CAP, player.waveGap + gapRate*dt);
+  player.chaserX = player.x - player.waveGap;
+  const gap = player.waveGap;
   if(gap < 46){ player.deathBy='wave'; Audio.sfx.crash(); cam.shake=20; spray(sx(player.x)+cam.x, player.y, -1, 30, '#ffffff'); gameOver(); }
   else if(gap < 620 && !player._warned){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!'); }
   else if(gap > 760) player._warned=false;
@@ -656,13 +686,14 @@ function land(gy,P){
   const sang=surfaceAngle(player.x);
   // normalize board angle relative to slope
   let diff=Math.atan2(Math.sin(player.angle-sang),Math.cos(player.angle-sang));
-  const flips=Math.floor(player.rotAccum/TAU);
+  // saubere Landung heißt: Netto-Drehung ≈ ganze Umdrehungen -> runden statt abrunden
+  const flips=Math.round(player.rotAccum/TAU);
   let tol=0.70 + (save.surfer==='storm'?0.15:0); // storm = vergebender
   tol -= clamp(player.dist/5000*0.10,0,0.12);
   if(Math.abs(diff)<tol || player.airTime<0.12){
     // clean landing
     player.air=false; player.y=gy; player.angle=sang; player.vy=0; player.angVel=0;
-    player.vx*=1.05;
+    player.vx*=1.05 + 0.06*Math.min(flips,3); // Tricks geben Speed
     // trick reward
     if(player.airTime>0.25){
       const grabs=player.airGrabs;
@@ -703,7 +734,7 @@ function land(gy,P){
       Audio.sfx.crash(); cam.shake=14;
     }
   }
-  player.rotAccum=0; player.airTime=0; player.airGrabs=0; player.grabT=0; player.bigAirFx=false;
+  player.rotAccum=0; player.airTime=0; player.airGrabs=0; player.grabT=0; player.bigAirFx=false; player.rotNet=0; player.flipsShown=0;
 }
 
 function updateEntities(dt,P){
@@ -941,7 +972,16 @@ function drawWater(P){
 //////////////////// Chaser monster wave ////////////////////
 function drawChaser(P){
   const cxs = sx(player.chaserX);
-  if(cxs < -260) return;
+  const gap=player.x-player.chaserX;
+  if(cxs < -260){
+    // noch außerhalb des Bildes (v.a. auf schmalen Handys): Gischt am linken Rand kündigt sie an
+    if(gap<900){ const a=clamp((900-gap)/700,0,1);
+      ctx.save(); const eg=ctx.createLinearGradient(0,0,60+40*a,0); eg.addColorStop(0,rgba(P.foam,0.55*a)); eg.addColorStop(1,rgba(P.foam,0));
+      ctx.fillStyle=eg; ctx.fillRect(0,0,100,H);
+      for(let i=0;i<Math.round(12*a);i++){ ctx.fillStyle=rgba(P.foam,rand(0.3,0.75)*a); ctx.beginPath(); ctx.arc(rand(0,20+40*a), rand(0,H), rand(2,5),0,TAU); ctx.fill(); }
+      ctx.restore(); }
+    drawChaserTint(gap); return;
+  }
   ctx.save();
   const g=ctx.createLinearGradient(cxs-260,0,cxs+80,0);
   g.addColorStop(0, rgba(P.water[2],0)); g.addColorStop(0.55, rgba(P.water[1],0.9)); g.addColorStop(1, rgba(P.water[0],0.96));
@@ -952,7 +992,9 @@ function drawChaser(P){
   for(let y=-40;y<=H+40;y+=16){ const xo=Math.sin(y/70+perfNow()/280)*20; const xx=cxs+xo+50; y===-40?ctx.moveTo(xx,y):ctx.lineTo(xx,y);} ctx.stroke();
   for(let i=0;i<7;i++){ ctx.fillStyle=rgba(P.foam,rand(0.2,0.6)); ctx.beginPath(); ctx.arc(cxs+50+rand(-8,28), rand(0,H), rand(2,5),0,TAU); ctx.fill(); }
   ctx.restore();
-  const gap=player.x-player.chaserX;
+  drawChaserTint(gap);
+}
+function drawChaserTint(gap){
   if(gap<620){ const a=clamp((620-gap)/620,0,0.5)*(0.6+0.4*Math.sin(perfNow()/120));
     ctx.save(); const dg=ctx.createLinearGradient(0,0,W*0.5,0); dg.addColorStop(0,rgba('#ff2b4a',a)); dg.addColorStop(1,rgba('#ff2b4a',0)); ctx.fillStyle=dg; ctx.fillRect(0,0,W*0.5,H); ctx.restore(); }
 }
@@ -1102,6 +1144,13 @@ function drawPlayer(P){
 
   // magnet aura
   if(player.magnet>0){ ctx.save(); ctx.globalAlpha=0.3+0.15*Math.sin(perfNow()/100); ctx.strokeStyle='#7fe8ff'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(X,Y-14,150*(save.surfer==='reef'?1.3:1),0,TAU); ctx.stroke(); ctx.restore(); }
+  // Lande-Ring: grün = Board ist landbar ausgerichtet -> jetzt loslassen
+  if(player.air && (player.holding || player.rotAccum>0.6)){
+    const la=surfaceAngle(player.x+player.vx*0.12);
+    const ok=Math.abs(Math.atan2(Math.sin(la-player.angle),Math.cos(la-player.angle))) < 0.55;
+    ctx.save(); ctx.globalAlpha=ok?0.9:0.55; ctx.lineWidth=ok?4:2.5; ctx.strokeStyle=ok?'#39e88a':'#ff8a5a';
+    ctx.beginPath(); ctx.arc(X,Y-14,36,0,TAU); ctx.stroke(); ctx.restore();
+  }
 }
 
 //////////////////// Weather overlays ////////////////////
@@ -1142,6 +1191,20 @@ function drawHUD(P){
     ctx.fillStyle='#ffe36b'; ctx.fillRect(W/2-40,64,80*clamp(player.comboTimer/3,0,1),4);
   }
   ctx.shadowBlur=0;
+  // Wellen-Abstand: füllt sich, je näher die Monsterwelle ist
+  { const danger=clamp(1-(player.x-player.chaserX)/WAVE_CAP,0,1);
+    const col = danger>0.62?'#ff4a5a': danger>0.38?'#ffb03a':'#59f0d6';
+    const pulse = danger>0.62 ? 0.6+0.4*Math.sin(perfNow()/90) : 1;
+    ctx.save(); ctx.globalAlpha=pulse; ctx.textAlign='left'; ctx.font='700 11px system-ui'; ctx.fillStyle=col;
+    ctx.fillText('🌊 WELLE', 20, 72);
+    ctx.fillStyle='rgba(255,255,255,.18)'; roundRect(20,88,110,6,3); ctx.fill();
+    ctx.fillStyle=col; roundRect(20,88,Math.max(6,110*danger),6,3); ctx.fill(); ctx.restore(); }
+  // Speed: zeigt direkt, dass Halten (Pumpen) schneller macht
+  { const sp=clamp((player.vx-360)/(1300-360),0,1), max=sp>0.85;
+    ctx.save(); ctx.textAlign='left'; ctx.font='700 11px system-ui'; ctx.fillStyle=max?'#ffe36b':'rgba(255,255,255,.8)';
+    ctx.fillText(max?'⚡ SPEED MAX':'⚡ SPEED', 20, 100);
+    ctx.fillStyle='rgba(255,255,255,.18)'; roundRect(20,116,110,6,3); ctx.fill();
+    ctx.fillStyle=max?'#ffe36b':'#ffffff'; roundRect(20,116,Math.max(6,110*sp),6,3); ctx.fill(); ctx.restore(); }
   // active power-ups
   let py=80, px=W-20; ctx.textAlign='right'; ctx.font='600 13px system-ui';
   const powers=[];
@@ -1352,6 +1415,10 @@ function drawScene(){
   for(const p of parts){ ctx.save(); ctx.globalAlpha=clamp(p.life/p.max,0,1); if(p.glow) ctx.globalCompositeOperation='screen';
     ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(sx(p.x),p.y-cam.y,p.r,0,TAU); ctx.fill(); ctx.restore(); }
   drawPlayer(P);
+  if(player.vx>760){ const a=clamp((player.vx-760)/600,0,1); // Speed-Linien
+    ctx.save(); ctx.strokeStyle=rgba('#ffffff',0.22*a); ctx.lineWidth=1.5;
+    for(let i=0;i<Math.round(6+10*a);i++){ const yy=rand(0,H), xx=rand(0,W), len=40+120*a; ctx.beginPath(); ctx.moveTo(xx,yy); ctx.lineTo(xx-len,yy); ctx.stroke(); }
+    ctx.restore(); }
   drawWeather(P);
   ctx.restore();
   drawHUD(P);
