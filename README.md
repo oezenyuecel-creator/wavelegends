@@ -17,6 +17,13 @@ schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 - **Perfekter Flip**: abspringen → in der Luft **neu drücken und halten** → das Board dreht mit festem Tempo (ein Flip ≈ ½ Sekunde) → **loslassen, sobald der Ring um den Surfer GRÜN ist**. Loslassen stoppt die Drehung sofort, ein Lande-Assistent richtet das Board auf die Welle aus. Bei Mini-Hüpfern (Ring bleibt rot) lieber nicht flippen.
 - **Tricks geben Speed**: jeder gelandete Flip beschleunigt dich zusätzlich (+6 % pro Flip).
 
+## Gratis & Vollversion (keine Werbung, nie)
+Modell „kostenlos starten, einmal zahlen":
+- **Gratis**: Tropenbucht, Sonnenuntergang, Sturmsee mit Kraken, Missionen und Daily Challenge. Kein harter Stopp: Am Ende der Sturmsee zeigt ein **Vorgeschmack-Fenster** kurz die Nacht-Welten, dann geht es in der Tropenbucht weiter, sodass Gratis-Spieler endlos um den Highscore surfen.
+- **Vollversion (Einmalkauf, Platzhalter 3,99 €)**: 🌙 Biolumineszente Nacht + Polarlichter, 🌠 Sternschnuppen-Events, Nachtsurfer-Paket (Surferin **Nova** mit leuchtendem Anzug + **Polarlicht-Board**, reine Optik, gleiche Werte wie das Holzboard: Echtgeld kauft nie Vorteile).
+- **Kaufseite** im Hoch-Moment: Hinweis in der Auswertung nach dem ersten Kraken bzw. am Ende der Gratis-Strecke, dazu „🌙 Vollversion" im Menü und bei den Premium-Artikeln im Shop. Im Prototyp ist der Kauf ein klar markierter **Test-Kauf** (es wird nichts abgebucht); „Käufe wiederherstellen" und echte Zahlung kommen mit der App-Store-Version. Zum Testen lässt sich die Vollversion auf der Kaufseite zurücksetzen.
+- **📤 Rekord teilen**: Nach jedem Run erzeugt das Spiel ein Rekord-Bild (Distanz, Combo, Perlen, „Schaffst du das?" + Link) und öffnet auf dem Handy das Teilen-Menü (WhatsApp & Co.); am Desktop wird es heruntergeladen.
+
 ## Fair & lernbar: Können statt Glück
 Gemessen auf iPhone-Breite: vorher war ein Hindernis bei Vollgas nur 0,2–0,4 s sichtbar (unter der
 Reaktionszeit), und 43 % aller Hindernis-Paare lagen zu weit für einen Sprung, aber zu nah zum Landen und

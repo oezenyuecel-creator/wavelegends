@@ -53,7 +53,7 @@ function rgba(hex,a){const c=hexToRgb(hex);return `rgba(${c[0]},${c[1]},${c[2]},
 //////////////////// Save ////////////////////
 const SAVE_KEY='wavelegends_v1';
 const save = Object.assign({
-  best:0, pearls:0, runs:0, soundOn:true,
+  best:0, pearls:0, runs:0, soundOn:true, fullVersion:false,
   board:'wood', surfer:'kai',
   ownedBoards:['wood'], ownedSurfers:['kai'],
 }, load());
@@ -69,6 +69,8 @@ const BOARDS = {
   fire:   {name:'Feuerboard',  price:1200, c1:'#ff5a2b',c2:'#ffb03a', accel:1.05, turn:1.02, air:1.08, blurb:'Höhere Airs, Flammen-Trail.'},
   crystal:{name:'Kristallboard',price:2400,c1:'#7fe8ff',c2:'#c58bff', accel:1.06, turn:1.06, air:1.06, blurb:'Ausgewogen & prismatisch.'},
   dragon: {name:'Drachenboard',price:5000, c1:'#39d98a',c2:'#0a6b4a', accel:1.10, turn:1.04, air:1.10, blurb:'Legendär. Alles etwas besser.'},
+  // Vollversion: reine Optik – gleiche Werte wie das Holzboard, damit Echtgeld nie Vorteile kauft
+  aurora: {name:'Polarlicht-Board',price:0, premium:true, c1:'#8affc8',c2:'#7a5cff', accel:1.00, turn:1.00, air:1.00, blurb:'Vollversion · reine Optik'},
 };
 const SURFERS = {
   kai:  {name:'Kai',   price:0,    skin:'#f0c27b',suit:'#2fb6e8', perk:'Ausgewogen.'},
@@ -76,6 +78,7 @@ const SURFERS = {
   reef: {name:'Reef',  price:900,  skin:'#c98a5b',suit:'#39d98a', perk:'Magnet hält länger.'},
   storm:{name:'Storm', price:1800, skin:'#d7b48f',suit:'#7a5cff', perk:'Landet vergebender.'},
   aya:  {name:'Aya',   price:3500, skin:'#8a5a3b',suit:'#ffd36b', perk:'+10% Perlen.'},
+  nova: {name:'Nova',  price:0, premium:true, glow:true, skin:'#e8c4a0',suit:'#59f0d6', perk:'Vollversion · leuchtender Anzug'},
 };
 
 //////////////////// Missionen & Daily Challenge ////////////////////
@@ -101,7 +104,7 @@ const MISSION_POOL=[
   {id:'ev_dol',  txt:'Surfe mit einem Delfin',         stat:'dolphin', scope:'run',   n:1,    rew:50},
   {id:'ev_chest',txt:'Finde eine Schatztruhe',          stat:'chest',   scope:'run',   n:1,    rew:60},
   {id:'ev_whale',txt:'Sieh einen Wal springen',         stat:'whale',   scope:'run',   n:1,    rew:40},
-  {id:'ev_shard',txt:'Fange 2 Sternsplitter',           stat:'shards',  scope:'run',   n:2,    rew:80},
+  {id:'ev_shard',txt:'Fange 2 Sternsplitter',           stat:'shards',  scope:'run',   n:2,    rew:80, full:true},
 ];
 const DAILY_POOL=[
   {id:'dy_d1500', txt:'1500 m in einem Run',     stat:'dist',  scope:'run', n:1500, rew:200},
@@ -110,15 +113,16 @@ const DAILY_POOL=[
   {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
 ];
 let runStats={}, missionTick=0;
-function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[]}; }
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[],gatesSeen:0}; }
 resetRunStats();
 function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
 function ensureMissions(){
   if(!Array.isArray(save.missions)) save.missions=[];
-  save.missions=save.missions.filter(s=>missionDef(s.id));
+  const allowed=m=>m && (!m.full || save.fullVersion); // Sternsplitter gibt's nur in den Nacht-Welten
+  save.missions=save.missions.filter(s=>allowed(missionDef(s.id)));
   while(save.missions.length<3){
     const active=save.missions.map(s=>s.id);
-    const cand=MISSION_POOL.filter(m=>!active.includes(m.id));
+    const cand=MISSION_POOL.filter(m=>allowed(m) && !active.includes(m.id));
     if(!cand.length) break;
     save.missions.push({id:pick(cand).id, prog:0, done:false});
   }
@@ -173,8 +177,10 @@ function buildRunReport(){
     const recent=runStats.wipeLog.filter(w=>sea.clock-w.t<14), counts={};
     recent.forEach(w=>counts[w.c]=(counts[w.c]||0)+1);
     const list=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-    cause = recent.length
-      ? 'Die Welle hat dich nach '+recent.length+' Wipeout'+(recent.length===1?'':'s')+' kurz nacheinander eingeholt: '+list.map(([c,n])=>n+'× '+c).join(', ')+'.'
+    cause = recent.length>1
+      ? 'Die Welle hat dich nach '+recent.length+' Wipeouts kurz nacheinander eingeholt: '+list.map(([c,n])=>n+'× '+c).join(', ')+'.'
+      : recent.length===1
+      ? 'Die Welle hat dich nach einem Wipeout ('+list[0][0]+') eingeholt – danach warst du zu langsam.'
       : 'Die Welle hat dich eingeholt – du warst zu langsam.';
     const top=list.length?list[0][0]:null;
     tip = top==='schiefe Landung' ? 'Flip-Tipp: loslassen, sobald der Ring um den Surfer GRÜN ist.'
@@ -289,23 +295,28 @@ const BIOMES = [
     sky:['#04122a','#0a2444'], sun:'#eaf4ff', sunGlow:'#9fd0ff', water:['#12546b','#0c3a52','#062231'], foam:'#d8fff4',
     accent:'#8affc8', islands:false, gulls:false, rain:false, stars:true, aurora:true, biolum:false, waveScale:1.0, difficulty:1.5 },
 ];
+// Gratis: Tropenbucht, Sonnenuntergang, Sturmsee (mit Kraken) im Kreis; Vollversion: alle 5 Welten.
+// Darf sich nur zwischen Runs ändern – das Gelände hängt über wsAt() am Biom.
+const BIOMES_FREE = BIOMES.slice(0,3);
+const FREE_CYCLE = BIOMES[3].dist, FULL_CYCLE = 4320;
 function biomeAt(dist){
-  // return {a, b, t} interpolation between two biome defs based on distance (loops)
-  const cycle = 4320; // meters per full loop
+  const list = save.fullVersion ? BIOMES : BIOMES_FREE;
+  const cycle = save.fullVersion ? FULL_CYCLE : FREE_CYCLE;
   const d = dist % cycle;
   let idx=0;
-  for(let i=0;i<BIOMES.length;i++){ if(d>=BIOMES[i].dist) idx=i; }
-  const cur = BIOMES[idx];
-  const nxt = BIOMES[(idx+1)%BIOMES.length];
-  const nextDist = (idx+1<BIOMES.length)? BIOMES[idx+1].dist : cycle;
+  for(let i=0;i<list.length;i++){ if(d>=list[i].dist) idx=i; }
+  const cur = list[idx];
+  const nxt = list[(idx+1)%list.length];
+  const nextDist = (idx+1<list.length)? list[idx+1].dist : cycle;
   const span = nextDist - cur.dist;
   const transStart = nextDist - 220;
   let t=0;
   if(d>transStart) t = smooth(clamp((d-transStart)/220,0,1));
   return {cur, nxt, t, idx};
 }
-function pal(dist){
-  const {cur,nxt,t}=biomeAt(dist);
+function pal(dist){ const {cur,nxt,t}=biomeAt(dist); return palMix(cur,nxt,t); }
+function palOf(key){ const b=BIOMES.find(x=>x.key===key); return palMix(b,b,0); }
+function palMix(cur,nxt,t){
   const L=(i,k)=> mixHex(cur[k][i], nxt[k][i], t);
   return {
     name: t>0.5? nxt.name : cur.name,
@@ -505,13 +516,15 @@ function press(x,y){
   Audio.resume();
   if(state==='menu'){ menuClick(x,y); return; }
   if(state==='missions'){ missionsClick(x,y); return; }
+  if(state==='unlock'){ unlockClick(x,y); return; }
   if(state==='shop'){ shopClick(x,y); return; }
   if(state==='over'){ overClick(x,y); return; }
   if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); }
   if(state==='pause'){ /* handled via button */ pauseClick(x,y); }
   hud.hintFade=true;
 }
-function release(){ pointer.down=false; if(state==='play'){ player.holding=false;
+function release(){ pointer.down=false; if(pendingShare){ pendingShare=false; doShare(); }
+  if(state==='play'){ player.holding=false;
   if(player.air && player.airPressAt && performance.now()-player.airPressAt<200) doGrab();
   player.airPressAt=0; } }
 function doGrab(){
@@ -683,6 +696,9 @@ function updatePlay(dt){
   // ----- distance / score -----
   player.dist = player.x/PXPM; // meters
   if(!player._passedBest && save.best>=80 && player.dist>save.best){ player._passedBest=true; banner('🏁 NEUER REKORD!','Weiter als je zuvor – weiter so!'); Audio.sfx.power(); }
+  // Ende der Gratis-Strecke: kein Stopp, nur ein Vorgeschmack auf die Nacht-Welten, dann geht's in der Tropenbucht weiter
+  if(!save.fullVersion){ const lap=Math.floor((player.dist+120)/FREE_CYCLE);
+    if(lap>runStats.gatesSeen && !bossState.active){ runStats.gatesSeen=lap; sea.glimpseT=3.2; Audio.sfx.chime(); } }
   player.score = Math.floor(player.dist) + player.pearls*5;
 
   // combo timer decay
@@ -763,7 +779,7 @@ function land(gy,P){
       if(grabs>0) label += ' + GRAB';
       if(player.airTime>1.1) label='SUPER '+label;
       player.celebrateT=0.5;
-      if(navigator.vibrate){ try{ navigator.vibrate(18); }catch(err){} }
+      buzz(18);
       runStats.tricks++; runStats.flips+=flips; runStats.grabs+=grabs; checkMissions();
       const gain=Math.floor(pts*player.mult);
       player.score+=gain; player.pearls+=Math.floor(flips*2);
@@ -864,6 +880,8 @@ function collide(e,P){
     }
   }
 }
+// Browser blockieren vibrate() (mit Konsolen-Fehler), solange noch nicht getippt wurde
+function buzz(ms){ if(navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)){ try{ navigator.vibrate(ms); }catch(err){} } }
 const HAZARD_LABEL={rock:'Fels', jelly:'Qualle', buoy:'Boje', fin:'Hai'};
 function hitHazard(e,P){ doWipeout(HAZARD_LABEL[e.type]||'Hindernis'); }
 function logWipe(cause){ runStats.wipeLog.push({t:sea.clock, c:cause}); }
@@ -888,7 +906,7 @@ function doWipeout(cause='Hindernis'){
   floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
   spray(sx(player.x)+cam.x, player.y, -1, 24, '#ffffff');
   Audio.sfx.crash(); cam.shake=16;
-  if(navigator.vibrate){ try{ navigator.vibrate(45); }catch(err){} }
+  buzz(45);
 }
 
 //////////////////// Boss update/draw ////////////////////
@@ -921,7 +939,7 @@ function resetSea(){
   sea.clock=0; sea.nextT=4.5; sea.last=null;
   sea.dolphin=null; sea.whale=null;
   sea.meteors=[]; sea.meteorShower=0; sea.meteorSpawn=0; sea.ambientMeteorT=4;
-  sea.showerT=0; sea.showerA=0; sea.rainbowOn=0; sea.rainbowA=0;
+  sea.showerT=0; sea.showerA=0; sea.rainbowOn=0; sea.rainbowA=0; sea.glimpseT=0;
 }
 resetSea();
 const SEA_EVENTS=[
@@ -946,6 +964,7 @@ function updateSea(dt,P){
     }
   }
   updateDolphin(dt,P); updateWhale(dt,P); updateMeteors(dt,P); updateRainbow(dt,P);
+  if(sea.glimpseT>0) sea.glimpseT-=dt;
 }
 function startSeaEvent(k,P){
   if(k==='dolphin'){
@@ -1084,6 +1103,7 @@ function gameOver(){
   Audio.setActive(false);
   player.dead=true;
   bankRun();
+  prepareShareImage();
 }
 
 //////////////////// Rendering helpers ////////////////////
@@ -1420,7 +1440,8 @@ function drawPlayer(P){
   ctx.stroke();
   // Oberkörper (gesenkt + geneigt)
   ctx.save(); ctx.translate(0,dip); ctx.rotate(lean);
-  ctx.fillStyle=S.suit; roundRect(-9,-26,18,16,7); ctx.fill();
+  if(S.glow){ ctx.shadowColor=S.suit; ctx.shadowBlur=14; }
+  ctx.fillStyle=S.suit; roundRect(-9,-26,18,16,7); ctx.fill(); ctx.shadowBlur=0;
   // Arme je nach Pose
   ctx.strokeStyle=S.skin; ctx.lineWidth=4;
   const armSwing=Math.sin(perfNow()/120)*2;
@@ -1571,6 +1592,7 @@ function drawMenu(){
   btn('missions', bx, H*0.62+70, bw, 46, dailyOpen? '🎯 Missionen · ★ Daily!' : '🎯 Missionen', {c1:'#39d98a',c2:'#1b8a5a',fs:16});
   btn('shop', bx, H*0.62+126, bw*0.48, 44, '🛍  Shop', {c1:'#ffb84d',c2:'#e07a2b',fs:15});
   btn('sound', bx+bw*0.52, H*0.62+126, bw*0.48, 44, save.soundOn?'🔊 Ton':'🔇 Ton', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+  if(!save.fullVersion) btn('full', W-150, 16, 134, 36, '🌙 Vollversion', {c1:'#7a5cff',c2:'#4a2fc0',fs:14});
   drawButtons();
   // stats footer
   ctx.save(); ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.7)';
@@ -1580,6 +1602,7 @@ function drawMenu(){
 function menuClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
   if(id==='play') startGame();
   else if(id==='missions'){ ensureDaily(); state='missions'; }
+  else if(id==='full') openUnlock('menu');
   else if(id==='shop'){ state='shop'; shopTab='boards'; }
   else if(id==='sound'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 }
@@ -1659,6 +1682,7 @@ function drawShop(){
     const abw=96, abx=cardX+cardW-abw-14, aby=cy+18, abh=34;
     if(isEq){ btn('eq_'+key, abx,aby,abw,abh,'AKTIV',{c1:'#39d98a',c2:'#1b8a5a',fs:14,disabled:true}); }
     else if(isOwned){ btn('use_'+key, abx,aby,abw,abh,'Nutzen',{c1:'#2fd0ff',c2:'#1b7fd6',fs:14}); }
+    else if(it.premium){ btn('prem_'+key, abx,aby,abw,abh,'🌙 Voll',{c1:'#7a5cff',c2:'#4a2fc0',fs:14}); }
     else { const afford=save.pearls>=it.price; btn('buy_'+key, abx,aby,abw,abh,'◐ '+it.price,{c1:afford?'#ffb84d':'#5a5a5a',c2:afford?'#e07a2b':'#3a3a3a',fs:14,disabled:!afford}); }
     cy+=cardH;
   }
@@ -1669,9 +1693,185 @@ function shopClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.butt
   if(id==='tab_boards') shopTab='boards';
   else if(id==='tab_surfers') shopTab='surfers';
   else if(id==='back') state='menu';
+  else if(id.startsWith('prem_')) openUnlock('shop');
   else if(id.startsWith('use_')){ const k=id.slice(4); if(shopTab==='boards') save.board=k; else save.surfer=k; persist(); }
   else if(id.startsWith('buy_')){ const k=id.slice(4); const it=(shopTab==='boards'?BOARDS:SURFERS)[k];
     if(save.pearls>=it.price){ save.pearls-=it.price; if(shopTab==='boards'){save.ownedBoards.push(k); save.board=k;} else {save.ownedSurfers.push(k); save.surfer=k;} Audio.sfx.power(); persist(); } }
+}
+
+//////////////////// Vollversion: Vorschau, Kaufseite (Test-Kauf) ////////////////////
+function drawWorldPreview(key,x,y,w,h){
+  const P=palOf(key), t=perfNow(), A=ctx.globalAlpha;
+  ctx.save(); roundRect(x,y,w,h,14); ctx.clip();
+  const g=ctx.createLinearGradient(0,y,0,y+h); g.addColorStop(0,P.sky[0]); g.addColorStop(1,P.sky[1]); ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
+  for(let i=0;i<28;i++){ ctx.globalAlpha=A*(0.35+0.65*Math.abs(Math.sin(t/600+i*1.7))); ctx.fillStyle='#fff'; ctx.fillRect(x+((i*73)%w), y+((i*41)%(h*0.55)), 1.6, 1.6); }
+  ctx.globalAlpha=A;
+  if(key==='aurora'){
+    ctx.globalCompositeOperation='screen';
+    for(let b=0;b<2;b++){ const yy=y+h*(0.16+b*0.16); ctx.beginPath();
+      for(let xx=0;xx<=w;xx+=8) ctx.lineTo(x+xx, yy+Math.sin(xx/34+t/900+b)*8);
+      for(let xx=w;xx>=0;xx-=8) ctx.lineTo(x+xx, yy+22+Math.sin(xx/34+t/900+b)*8);
+      ctx.closePath(); ctx.fillStyle=b?'rgba(122,92,255,.38)':'rgba(122,255,192,.42)'; ctx.fill(); }
+    ctx.globalCompositeOperation='source-over';
+  } else {
+    const mx=x+w*0.74, my=y+h*0.28, mg=ctx.createRadialGradient(mx,my,2,mx,my,h*0.38);
+    mg.addColorStop(0,rgba(P.sunGlow,0.6)); mg.addColorStop(1,rgba(P.sunGlow,0)); ctx.fillStyle=mg; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle=P.sun; ctx.beginPath(); ctx.arc(mx,my,h*0.09,0,TAU); ctx.fill();
+  }
+  const wy=y+h*0.68, wl=xx=>wy+Math.sin(xx/22+t/500)*4;
+  ctx.beginPath(); ctx.moveTo(x,y+h); for(let xx=0;xx<=w;xx+=6) ctx.lineTo(x+xx, wl(xx)); ctx.lineTo(x+w,y+h); ctx.closePath();
+  ctx.fillStyle=P.water[1]; ctx.fill();
+  ctx.strokeStyle=rgba(P.foam,0.85); ctx.lineWidth=2; ctx.beginPath(); for(let xx=0;xx<=w;xx+=6){ xx?ctx.lineTo(x+xx,wl(xx)):ctx.moveTo(x,wl(0)); } ctx.stroke();
+  if(key==='biolum'){ for(let i=0;i<18;i++){ ctx.globalAlpha=A*(0.3+0.6*Math.abs(Math.sin(t/350+i))); ctx.fillStyle=P.foam; ctx.beginPath(); ctx.arc(x+((i*53)%w), wy+9+((i*13)%Math.max(4,y+h-wy-12)), 1.8,0,TAU); ctx.fill(); } }
+  ctx.restore();
+  ctx.save(); ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=1.5; roundRect(x,y,w,h,14); ctx.stroke(); ctx.restore();
+}
+// Vorgeschmack am Ende der Gratis-Strecke
+function drawGlimpse(){
+  if(!(sea.glimpseT>0)) return;
+  const u=clamp(1-sea.glimpseT/3.2,0,1), a=clamp(Math.sin(Math.PI*u)*1.6,0,1);
+  const w=Math.min(W-48,340), h=92, x=(W-w)/2, y=Math.max(132,H*0.15), half=(w-8)/2;
+  ctx.save(); ctx.globalAlpha=a;
+  drawWorldPreview('biolum', x, y, half, h); drawWorldPreview('aurora', x+half+8, y, half, h);
+  ctx.textAlign='center'; ctx.textBaseline='top'; ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=8;
+  ctx.font='800 15px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('🔒 Die Nacht-Welten', W/2, y+h+10);
+  ctx.font='600 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.88)'; ctx.fillText('Biolumineszenz & Polarlichter – in der Vollversion', W/2, y+h+30);
+  ctx.restore();
+}
+
+let unlockFrom='menu', unlockConfirm=false, unlockMsg={t:0,text:''}, confetti=[];
+const FULL_PRICE='3,99 €';
+function openUnlock(from){ unlockFrom=from; unlockConfirm=false; unlockMsg.t=0; state='unlock'; }
+function grantFullVersion(){
+  save.fullVersion=true;
+  if(!save.ownedBoards.includes('aurora')) save.ownedBoards.push('aurora');
+  if(!save.ownedSurfers.includes('nova')) save.ownedSurfers.push('nova');
+  ensureMissions(); persist();
+}
+function revokeFullVersion(){ // nur für Tests im Prototyp
+  save.fullVersion=false;
+  save.ownedBoards=save.ownedBoards.filter(k=>!(BOARDS[k]||{}).premium);
+  save.ownedSurfers=save.ownedSurfers.filter(k=>!(SURFERS[k]||{}).premium);
+  if((BOARDS[save.board]||{}).premium) save.board='wood';
+  if((SURFERS[save.surfer]||{}).premium) save.surfer='kai';
+  ensureMissions(); persist();
+}
+function burstConfetti(){
+  const cols=['#ffe36b','#59f0d6','#ff6ba6','#7a5cff','#8affc8','#ffffff'];
+  for(let i=0;i<90;i++) confetti.push({x:W/2+rand(-60,60), y:H*0.35, vx:rand(-260,260), vy:rand(-640,-200), r:rand(TAU), vr:rand(-8,8), c:pick(cols), life:rand(1.4,2.4)});
+}
+function drawUnlock(){
+  { const NP=palOf('biolum'), sg=ctx.createLinearGradient(0,0,0,H); // ruhiger Nachthimmel ohne Mond/Horizont des Spiels
+    sg.addColorStop(0,NP.sky[0]); sg.addColorStop(1,'#020812'); ctx.fillStyle=sg; ctx.fillRect(0,0,W,H);
+    for(const s of bgStars){ ctx.globalAlpha=0.3+0.5*Math.abs(Math.sin(perfNow()/700+s.tw)); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(s.x*W,s.y*H*1.4,s.r,0,TAU); ctx.fill(); }
+    ctx.globalAlpha=1; }
+  const cw=Math.min(W-32,400), x0=(W-cw)/2; let y=Math.max(38,H*0.055);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.font='700 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.65)'; ctx.fillText('WAVE LEGENDS', W/2, y);
+  y+=34; ctx.font='900 30px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('VOLLVERSION', W/2, y);
+  ctx.restore();
+  y+=16; const tw=(cw-12)/2, th=Math.round(Math.min(118, tw*0.72));
+  drawWorldPreview('biolum', x0, y, tw, th); drawWorldPreview('aurora', x0+tw+12, y, tw, th);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font='600 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.8)';
+  ctx.fillText('Biolumineszente Nacht', x0+tw/2, y+th+18); ctx.fillText('Polarlichter', x0+tw+12+tw/2, y+th+18);
+  y+=th+48;
+  const feats=['🌙  Zwei neue Welten zum Surfen','🌠  Sternschnuppen-Events','🏄  Nachtsurfer-Paket: Nova + Polarlicht-Board','❤️  Unterstützt die Entwicklung'];
+  ctx.textAlign='left'; ctx.font='600 14px system-ui'; ctx.fillStyle='#fff';
+  feats.forEach((f,i)=>ctx.fillText(f, x0+8, y+i*26));
+  y+=feats.length*26+10;
+  ctx.textAlign='center'; ctx.font='800 15px system-ui'; ctx.fillStyle='#ffe36b';
+  y=wrapText('Einmal zahlen. Alles für immer. Keine Werbung.', W/2, y, cw, 19);
+  ctx.restore();
+
+  uiButtons=[]; const bw=Math.min(300,cw), bx=(W-bw)/2, by=Math.max(y+26, H-236);
+  if(!save.fullVersion){
+    btn('buy', bx, by, bw, 58, 'Freischalten · '+FULL_PRICE, {c1:'#ffd36b',c2:'#e0952b',fs:20});
+    btn('later', bx+bw*0.2, by+96, bw*0.6, 44, 'Später', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+    btn('restore', bx+bw*0.2, by+150, bw*0.6, 30, 'Käufe wiederherstellen', {c1:'#2a3a52',c2:'#1d2a3d',fs:12});
+  } else {
+    btn('go', bx, by+30, bw, 56, '▶  Los surfen', {c1:'#2fd0ff',c2:'#1b7fd6',fs:20});
+    btn('later', bx+bw*0.2, by+98, bw*0.6, 42, 'Zurück', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+    btn('reset', bx+bw*0.12, by+152, bw*0.76, 28, '(Test) Vollversion zurücksetzen', {c1:'#3a2a3a',c2:'#2a1d2a',fs:11});
+  }
+  drawButtons();
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  if(!save.fullVersion){ ctx.font='500 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fillText('Prototyp: Test-Kauf – es wird nichts abgebucht', W/2, by+78); }
+  else { ctx.font='800 18px system-ui'; ctx.fillStyle='#39e88a'; ctx.fillText('✓ Vollversion aktiv – danke!', W/2, by+16); }
+  ctx.restore();
+
+  if(unlockConfirm){
+    ctx.fillStyle='rgba(0,0,0,.62)'; ctx.fillRect(0,0,W,H);
+    const mw=Math.min(W-40,340), mh=230, mx=(W-mw)/2, my=(H-mh)/2;
+    ctx.save(); roundRect(mx,my,mw,mh,18); ctx.fillStyle='#14233a'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    ctx.font='800 18px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('Test-Kauf bestätigen', W/2, my+38);
+    ctx.font='600 14px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('Wave Legends Vollversion · '+FULL_PRICE, W/2, my+66);
+    ctx.font='500 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillText('Prototyp – es wird kein Geld abgebucht.', W/2, my+88);
+    ctx.restore();
+    uiButtons=[];
+    btn('confirm', mx+16, my+mh-112, mw-32, 46, 'Bestätigen', {c1:'#39d98a',c2:'#1b8a5a',fs:16});
+    btn('cancel', mx+16, my+mh-56, mw-32, 40, 'Abbrechen', {c1:'#4a5a70',c2:'#36445a',fs:14});
+    drawButtons();
+  }
+  const dt=1/60;
+  for(let i=confetti.length-1;i>=0;i--){ const p=confetti[i]; p.life-=dt; if(p.life<=0){ confetti.splice(i,1); continue; }
+    p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.r+=p.vr*dt;
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.globalAlpha=clamp(p.life,0,1); ctx.fillStyle=p.c; ctx.fillRect(-4,-2.5,8,5); ctx.restore(); }
+  if(unlockMsg.t>0){ unlockMsg.t-=dt;
+    ctx.save(); ctx.globalAlpha=clamp(unlockMsg.t/0.4,0,1); ctx.font='700 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const tw2=ctx.measureText(unlockMsg.text).width+32; roundRect((W-tw2)/2, H-64, tw2, 34, 17); ctx.fillStyle='rgba(20,35,58,.95)'; ctx.fill();
+    ctx.fillStyle='#fff'; ctx.fillText(unlockMsg.text, W/2, H-47); ctx.restore(); }
+}
+function unlockClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
+  if(id==='buy') unlockConfirm=true;
+  else if(id==='cancel') unlockConfirm=false;
+  else if(id==='confirm'){ unlockConfirm=false; grantFullVersion(); burstConfetti(); Audio.sfx.chest(); Audio.sfx.chime(); unlockMsg={t:3,text:'Danke! 🎉 Die Nacht-Welten sind frei.'}; }
+  else if(id==='later') state=unlockFrom;
+  else if(id==='go') startGame();
+  else if(id==='restore') unlockMsg={t:2.6,text:'Wiederherstellen kommt mit der App-Store-Version.'};
+  else if(id==='reset'){ revokeFullVersion(); unlockMsg={t:2.2,text:'Zurückgesetzt – wieder Gratis-Version.'}; }
+}
+
+//////////////////// Rekord teilen ////////////////////
+// Bild wird beim Auswertungs-Screen vorbereitet: navigator.share braucht eine frische Nutzer-Geste,
+// ein asynchrones toBlob() im Klick-Handler würde sie auf iOS verbrauchen.
+let shareFile=null, shareCanvas=null, pendingShare=false;
+const SHARE_URL='https://oezenyuecel-creator.github.io/wavelegends/';
+function prepareShareImage(){
+  shareFile=null;
+  const c=document.createElement('canvas'); c.width=1080; c.height=1350; const g=c.getContext('2d');
+  const P=pal(player.dist), rp=runReport, dist=Math.floor(player.dist).toLocaleString('de-DE');
+  const sg=g.createLinearGradient(0,0,0,1350); sg.addColorStop(0,P.sky[0]); sg.addColorStop(1,P.sky[1]); g.fillStyle=sg; g.fillRect(0,0,1080,1350);
+  const gl=g.createRadialGradient(790,330,20,790,330,440); gl.addColorStop(0,rgba(P.sunGlow,0.6)); gl.addColorStop(1,rgba(P.sunGlow,0)); g.fillStyle=gl; g.fillRect(0,0,1080,1350);
+  g.fillStyle=P.sun; g.beginPath(); g.arc(790,330,95,0,TAU); g.fill();
+  if(P.starA>0.3){ for(let i=0;i<90;i++){ g.globalAlpha=P.starA*(0.4+0.6*Math.random()); g.fillStyle='#fff'; g.beginPath(); g.arc(Math.random()*1080, Math.random()*700, Math.random()*2.6+0.6,0,TAU); g.fill(); } g.globalAlpha=1; }
+  const wave=x=>990+Math.sin(x/170)*60+Math.sin(x/61)*18;
+  g.beginPath(); g.moveTo(0,1350); for(let x=0;x<=1080;x+=10) g.lineTo(x,wave(x)); g.lineTo(1080,1350); g.closePath();
+  const wg=g.createLinearGradient(0,900,0,1350); wg.addColorStop(0,P.water[0]); wg.addColorStop(0.5,P.water[1]); wg.addColorStop(1,P.water[2]); g.fillStyle=wg; g.fill();
+  g.strokeStyle=rgba(P.foam,0.9); g.lineWidth=8; g.beginPath(); for(let x=0;x<=1080;x+=10){ x?g.lineTo(x,wave(x)):g.moveTo(0,wave(0)); } g.stroke();
+  g.textAlign='center'; g.textBaseline='alphabetic';
+  g.font='150px system-ui'; g.fillText('🏄', 330, wave(330)+24);
+  g.shadowColor='rgba(0,0,0,.35)'; g.shadowBlur=18; g.fillStyle='#fff';
+  g.font='900 64px system-ui'; g.fillText('WAVE LEGENDS', 540, 150);
+  if(player.newBest){ g.font='800 46px system-ui'; g.fillStyle='#ffe36b'; g.fillText('🏁 NEUER REKORD!', 540, 262); }
+  g.font='900 190px system-ui'; g.fillStyle='#fff'; g.fillText(dist+' m', 540, 480);
+  if(rp){ const st=[]; // nur Werte zum Angeben – keine "0 Flips"
+    if(rp.vals.flips>0) st.push('↻ '+rp.vals.flips+(rp.vals.flips===1?' Flip':' Flips'));
+    if(rp.vals.combo>1) st.push('x'+rp.vals.combo.toFixed(1)+' Combo');
+    if(rp.vals.pearls>0) st.push('◐ '+rp.vals.pearls+' Perlen');
+    g.font='700 44px system-ui'; g.fillStyle='rgba(255,255,255,.95)'; g.fillText(st.join('   ·   '), 540, 575); }
+  g.font='800 54px system-ui'; g.fillStyle='#fff'; g.fillText('Schaffst du das?', 540, 1210);
+  g.font='600 34px system-ui'; g.fillStyle='rgba(255,255,255,.88)'; g.fillText(SHARE_URL.replace('https://','').replace(/\/$/,''), 540, 1270);
+  shareCanvas=c;
+  try{ c.toBlob(b=>{ if(b) shareFile=new File([b],'wave-legends-rekord.jpg',{type:'image/jpeg'}); },'image/jpeg',0.92); }catch(e){}
+}
+function doShare(){
+  const text='Ich bin '+Math.floor(player.dist).toLocaleString('de-DE')+' m bei Wave Legends gesurft 🌊 Schaffst du das?';
+  try{
+    if(shareFile && navigator.canShare && navigator.canShare({files:[shareFile]})){ navigator.share({files:[shareFile], text:text+' '+SHARE_URL}).catch(()=>{}); return; }
+    if(navigator.share){ navigator.share({title:'Wave Legends', text, url:SHARE_URL}).catch(()=>{}); return; }
+  }catch(e){}
+  if(shareCanvas){ const a=document.createElement('a'); a.download='wave-legends-rekord.jpg'; a.href=shareCanvas.toDataURL('image/jpeg',0.92); document.body.appendChild(a); a.click(); a.remove(); }
 }
 
 //////////////////// Eingefrorene Szene (Pause / Auswertung) ////////////////////
@@ -1747,14 +1947,22 @@ function drawOver(){
     if(rp.tip){ y+=24; ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='#ffe36b'; y=wrapText('💡 '+rp.tip, cx, y, cw, 17); }
   }
   ctx.restore();
-  uiButtons=[]; const bw=Math.min(260,W*0.7), bx=(W-bw)/2, by=Math.min(Math.max(y+22, H-140), H-116);
+  uiButtons=[]; const bw=Math.min(280,W*0.76), bx=(W-bw)/2, by=Math.min(Math.max(y+22, H-140), H-116);
+  // Hoch-Moment: nach dem Kraken oder am Ende der Gratis-Strecke auf die Vollversion hinweisen
+  const ctaY=by-58;
+  if(!save.fullVersion && (runStats.boss>0 || runStats.gatesSeen>0) && ctaY>y+12)
+    btn('unlock_cta',bx,ctaY,bw,46,'🌙 Nacht-Welten freischalten',{c1:'#7a5cff',c2:'#4a2fc0',fs:15});
   btn('retry',bx,by,bw,52,'↻  Nochmal',{c1:'#2fd0ff',c2:'#1b7fd6',fs:20});
-  btn('shop2',bx,by+62,bw*0.48,44,'🛍 Shop',{c1:'#ffb84d',c2:'#e07a2b',fs:15});
-  btn('menu',bx+bw*0.52,by+62,bw*0.48,44,'⌂ Menü',{c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+  const sw=(bw-12)/3;
+  btn('shop2',bx,by+62,sw,44,'🛍 Shop',{c1:'#ffb84d',c2:'#e07a2b',fs:14});
+  btn('share',bx+sw+6,by+62,sw,44,'📤 Teilen',{c1:'#39d98a',c2:'#1b8a5a',fs:14});
+  btn('menu',bx+2*(sw+6),by+62,sw,44,'⌂ Menü',{c1:'#7a8aa0',c2:'#4a5a70',fs:14});
   drawButtons();
 }
 function overClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
-  if(id==='retry') startGame(); else if(id==='menu') state='menu'; else if(id==='shop2'){ state='shop'; shopTab='boards'; } }
+  if(id==='retry') startGame(); else if(id==='menu') state='menu'; else if(id==='shop2'){ state='shop'; shopTab='boards'; }
+  else if(id==='share') pendingShare=true; // ausgelöst beim Loslassen (dort zählt die Geste für navigator.share)
+  else if(id==='unlock_cta') openUnlock('over'); }
 
 //////////////////// Scene compositor ////////////////////
 function drawScene(withHud=true){
@@ -1780,6 +1988,7 @@ function drawScene(withHud=true){
   drawWeather(P);
   ctx.restore();
   if(!withHud) return; // Auswertungs-Bildschirm: nur die eingefrorene Szene als Hintergrund
+  drawGlimpse();
   drawHazardWarnings();
   drawHUD(P);
 }
@@ -1812,6 +2021,7 @@ function frame(t){
   else if(state==='shop') drawShop();
   else if(state==='pause') drawPause();
   else if(state==='over') drawOver();
+  else if(state==='unlock') drawUnlock();
   requestAnimationFrame(frame);
 }
 // init chord on first resume
