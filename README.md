@@ -18,7 +18,8 @@ Ein Tester hatte nach ~26 Läufen (~19 min) alles gekauft. Deshalb gibt es jetzt
 - **Erfolge** 🏆: 12 Disziplinen × Bronze/Silber/Gold (36 Medaillen), z. B. Flip-Meister, Kraken-Jäger, Hai-Flüsterer, Dauersurfer. Belohnung: 100/300/750 Perlen; Gold-Stufen schalten Trails frei, die man nicht kaufen kann. Neue Erfolge erscheinen sofort im Lauf (Banner-Warteschlange) und in der Auswertung.
 - **Trails**: 8 Spuren hinter dem Board (Gischt, Sternenstaub, Feuer, Regenbogen, Leuchtspur, Kraken-Tinte, Perlenkette, Goldspur) – nur erspielbar.
 - **Power-Up-Upgrades**: Magnet/Turbo/Stern länger, Schild öfter schon beim Start – je 5 Stufen (500 → 8.000 Perlen), nur für Perlen, nie für Echtgeld.
-- **Tägliche Belohnung**: 7-Tage-Serie (100 → 1.000 Perlen), verpasster Tag = von vorn.
+- **Tägliche Belohnung**: 7-Tage-Serie (100 → 1.000 Perlen, Tag 7 zusätzlich +5 💎), verpasster Tag = von vorn.
+- **Sammel-Kollektion mit Effekten** 💎: 6 Boards (Prisma, Frost, Blitz, Königs-Board, Phönix mit Flammen, Galaxie) und 6 Surfer (Jack der Pirat, Shadow der Ninja, Robo, Merlin der Zauberer, Blaze mit Heldenumhang, Coral mit Krone & Aura) in den Stufen Selten/Episch/Legendär. Seltene für Perlen, Epische (💎 20–25) und Legendäre (💎 50–60) nur für **Kristalle** — selten hoch in der Luft (guter Sprung nötig), +1 pro Kraken, +2/+5 für Silber/Gold-Erfolge, +3 alle 5 Level, +5 an Tag 7. Alles reine Optik (Werte wie das Holzboard). Shop mit Live-Vorschau, Seltenheits-Leiste und Sammlungs-Zähler; dein aktueller Surfer steht als Schaustück im Menü.
 - Bestehende Spielstände bekommen Start-XP fürs bisherige Spielen, schon erreichte Rekorde zählen sofort als Erfolge. Shop und Erfolge sind scrollbar (Knöpfe lösen erst beim Loslassen ohne Wischen aus).
 
 ## Surf-Schule (Tutorial)
