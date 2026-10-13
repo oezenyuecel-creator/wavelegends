@@ -1674,9 +1674,22 @@ function shopClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.butt
     if(save.pearls>=it.price){ save.pearls-=it.price; if(shopTab==='boards'){save.ownedBoards.push(k); save.board=k;} else {save.ownedSurfers.push(k); save.surfer=k;} Audio.sfx.power(); persist(); } }
 }
 
+//////////////////// Eingefrorene Szene (Pause / Auswertung) ////////////////////
+// cam.shake wird nur im Spiel-Update abgebaut und einige Effekte würfeln pro Frame neu –
+// deshalb einmal ruhig rendern und als Standbild wiederverwenden.
+let frozenSnap=null;
+function drawFrozenScene(withHud){
+  if(!frozenSnap || frozenSnap.width!==cv.width || frozenSnap.height!==cv.height || frozenSnap.hud!==withHud){
+    cam.shake=0; drawScene(withHud);
+    frozenSnap=document.createElement('canvas'); frozenSnap.width=cv.width; frozenSnap.height=cv.height; frozenSnap.hud=withHud;
+    frozenSnap.getContext('2d').drawImage(cv,0,0);
+  }
+  ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(frozenSnap,0,0); ctx.restore();
+}
+
 //////////////////// Screen: Pause ////////////////////
 function drawPause(){ // draw frozen game beneath then overlay
-  drawScene();
+  drawFrozenScene(true);
   ctx.save(); ctx.fillStyle='rgba(4,18,31,.6)'; ctx.fillRect(0,0,W,H);
   ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='900 40px system-ui'; ctx.fillText('PAUSE',W/2,H*0.3); ctx.restore();
   uiButtons=[]; const bw=Math.min(240,W*0.7), bx=(W-bw)/2;
@@ -1696,7 +1709,7 @@ function wrapText(txt, cx, y, maxW, lh){
   lines.forEach((l,i)=>ctx.fillText(l,cx,y+i*lh)); return y+(lines.length-1)*lh;
 }
 function drawOver(){
-  drawScene(false); // frozen scene, ohne HUD/Banner
+  drawFrozenScene(false); // ohne HUD/Banner
   const rp=runReport;
   ctx.save(); ctx.fillStyle='rgba(4,18,31,.8)'; ctx.fillRect(0,0,W,H);
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
@@ -1793,7 +1806,7 @@ function frame(t){
   tScale=lerp(tScale,sTarget,0.16);
   viewZoom=lerp(viewZoom,(state==='play'&&tScale<0.85)?1.16:1,0.10);
   if(player.slowT>0) player.slowT-=dt;
-  if(state==='play'){ updatePlay(dt*tScale); drawScene(); }
+  if(state==='play'){ frozenSnap=null; updatePlay(dt*tScale); drawScene(); }
   else if(state==='menu') drawMenu();
   else if(state==='missions') drawMissions();
   else if(state==='shop') drawShop();
