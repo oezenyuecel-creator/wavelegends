@@ -110,7 +110,7 @@ const DAILY_POOL=[
   {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
 ];
 let runStats={}, missionTick=0;
-function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0}; }
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[]}; }
 resetRunStats();
 function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
 function ensureMissions(){
@@ -157,7 +157,35 @@ function finalizeMissions(){
   save.missions=save.missions.filter(s=>!s.done); // erledigte Slots freimachen
   ensureMissions();
 }
+// Run-Analyse: macht sichtbar, ob man besser wird (Rekorde pro Disziplin, Trend) und warum man gescheitert ist
+let runReport=null;
+function buildRunReport(){
+  const rec = save.records || (save.records={dist:save.best||0,pearls:0,flips:0,combo:1,streak:0});
+  const vals={ dist:Math.floor(player.dist), pearls:player.pearls, flips:runStats.flips, combo:+runStats.maxMult.toFixed(1), streak:Math.floor(runStats.noWipeBest) };
+  const prev={...rec}, isNew={};
+  for(const k in vals){ isNew[k] = save.runs>1 && vals[k]>0 && vals[k]>(prev[k]||0); if(vals[k]>(rec[k]||0)) rec[k]=vals[k]; }
+  save.history=(save.history||[]).concat(vals.dist).slice(-10);
+  let cause='', tip='';
+  if(player.deathBy==='shark'){
+    cause='Ein Hai hat dich erwischt.';
+    tip='Rotes 🦈-Signal am rechten Rand = gleich tippen und drüberspringen.';
+  } else if(player.deathBy==='wave'){
+    const recent=runStats.wipeLog.filter(w=>sea.clock-w.t<14), counts={};
+    recent.forEach(w=>counts[w.c]=(counts[w.c]||0)+1);
+    const list=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    cause = recent.length
+      ? 'Die Welle hat dich nach '+recent.length+' Wipeout'+(recent.length===1?'':'s')+' kurz nacheinander eingeholt: '+list.map(([c,n])=>n+'× '+c).join(', ')+'.'
+      : 'Die Welle hat dich eingeholt – du warst zu langsam.';
+    const top=list.length?list[0][0]:null;
+    tip = top==='schiefe Landung' ? 'Flip-Tipp: loslassen, sobald der Ring um den Surfer GRÜN ist.'
+        : top==='Kraken-Tentakel' ? 'Kraken-Tipp: Jede Tentakel kündigt ein rotes ⚠ an – dann springen. Dazwischen ist Zeit zum Landen.'
+        : top ? 'Ein ⚠ am rechten Rand kündigt jedes Hindernis 1 Sekunde vorher an – dann springen.'
+        : 'Gedrückt halten = Speed. Je schneller du surfst, desto weiter fällt die Welle zurück.';
+  }
+  runReport={vals, prev, isNew, cause, tip, history:save.history.slice()};
+}
 function bankRun(){
+  buildRunReport();
   finalizeMissions();
   save.pearls += player.pearls;
   if(Math.floor(player.dist)>save.best){ save.best=Math.floor(player.dist); player.newBest=true; } else player.newBest=false;
@@ -346,9 +374,19 @@ let lastSpawnX=0;
 const ENT = {PEARL:'pearl',COIN:'coin',ROCK:'rock',JELLY:'jelly',FIN:'fin',BUOY:'buoy',MAGNET:'magnet',SHIELD:'shield',TURBO:'turbo',STAR:'star',TENT:'tent',CHEST:'chest',SHARD:'shard'};
 const HAZARDS=new Set([ENT.ROCK,ENT.JELLY,ENT.FIN,ENT.BUOY]);
 
+// Faire Hindernis-Abstände: entweder so nah, dass EIN Sprung beide nimmt (≤0,35 s), oder genug Zeit zum
+// Landen und Neu-Abspringen (≥1,3 s; Haie ≥1,6 s, nie in Gruppen). Vorher lagen 43% aller Paare dazwischen.
+let lastHzX=-1e9, lastHzShark=false;
+function hazardSlotOk(hx, shark){
+  if(hx < 2600) return false;                 // Aufwärmphase: die ersten ~3 s ohne Hindernisse
+  const v=Math.max(player.vx*1.2, 800);       // vorsichtig schätzen: bis du ankommst, bist du evtl. schneller
+  const gap=(hx-lastHzX)/v;
+  if(shark || lastHzShark) return gap>=1.6;
+  return gap>=1.3 || gap<=0.35;
+}
 function resetWorld(){
   ents.length=0; parts.length=0; floaters.length=0;
-  lastSpawnX = 700;
+  lastSpawnX = 700; lastHzX=-1e9; lastHzShark=false;
   bossState.active=false; bossState.next=2200; bossState.hits=0; bossState.banner=0;
   resetSea();
 }
@@ -371,11 +409,14 @@ function spawnAhead(px){
       ents.push({type:ENT.COIN,x,y:sy-rand(30,90),r:11,got:false,spin:0});
     } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30)){
       // Hindernis-Band: skaliert mit Schwierigkeit, verdrängt aber NIE Bojen/Power-Ups
-      const hr=Math.random();
-      if(hr<0.42){ ents.push({type:ENT.ROCK,x,y:sy,r:26}); }
-      else if(hr<0.76){ const e={type:ENT.JELLY,x,y:sy-rand(22,52),r:24,ph:rand(TAU),baseY:0}; e.baseY=e.y; ents.push(e); }
-      else if(hr<0.84){ ents.push({type:ENT.FIN,x:x+300,y:sy,r:22,chase:rand(0.2,0.5)}); } // Haie selten — dafür TÖDLICH
-      else { ents.push({type:ENT.BUOY,x,y:sy,r:18,ph:rand(TAU)}); }
+      const hr=Math.random(), shark = hr>=0.76 && hr<0.84, hx = shark ? x+300 : x;
+      if(hazardSlotOk(hx, shark)){
+        lastHzX=hx; lastHzShark=shark;
+        if(hr<0.42){ ents.push({type:ENT.ROCK,x,y:sy,r:26}); }
+        else if(hr<0.76){ const e={type:ENT.JELLY,x,y:sy-rand(22,52),r:24,ph:rand(TAU),baseY:0}; e.baseY=e.y; ents.push(e); }
+        else if(shark){ ents.push({type:ENT.FIN,x:hx,y:surfaceY(hx),r:22,chase:rand(0.2,0.5)}); } // Haie selten — dafür TÖDLICH
+        else { ents.push({type:ENT.BUOY,x,y:sy,r:18,ph:rand(TAU)}); }
+      }
     } else if(r< 0.52 + clamp(0.13*diff, 0.13, 0.30) + 0.05){
       // festes Power-Up-Band (5%) — bleibt auch im Spätspiel erhalten
       const kinds=[ENT.MAGNET,ENT.SHIELD,ENT.TURBO,ENT.STAR];
@@ -396,8 +437,12 @@ function maybeBoss(){
     let bx = player.x + W*0.9;
     for(let i=0;i<4;i++){
       bossState.tents.push({x:bx, y0:surfaceY(bx), h:rand(50,80), ph:rand(TAU), alive:true, r:26});
-      bx += rand(380,540);
+      bx += Math.max(player.vx,800)*rand(1.3,1.5); // Zeit zum Landen und Neu-Abspringen
     }
+    // keine normalen Hindernisse zwischen/um die Tentakel
+    const t0=bossState.tents[0].x, t1=bossState.tents[bossState.tents.length-1].x;
+    for(let i=ents.length-1;i>=0;i--){ if(HAZARDS.has(ents[i].type) && ents[i].x>t0-900 && ents[i].x<t1+900) ents.splice(i,1); }
+    lastHzX=t1; lastHzShark=true;
     banner('⚠ KRAKEN ⚠','Spring über die Tentakel!');
     Audio.sfx.boost();
   }
@@ -438,7 +483,7 @@ function resetPlayer(){
   player.combo=0; player.mult=1; player.comboTimer=0; player.rotAccum=0; player.airTime=0;
   player.wipe=0; player.dead=false; player.shield=false; player.magnet=0; player.turbo=0; player.star=0;
   player.trail.length=0; player.waveGap=WAVE_CAP-100; player.chaserX=player.x-player.waveGap; player._warned=false; player.deathBy=null;
-  player.rotNet=0; player.flipsShown=0; player.sinceWipe=99;
+  player.rotNet=0; player.flipsShown=0; player.sinceWipe=99; player._passedBest=false;
   player.grabT=0; player.airGrabs=0; player.celebrateT=0; player.slowT=0; player.bigAirFx=false; player.airPressAt=0;
   const B=BOARDS[save.board], S=SURFERS[save.surfer];
   player.B=B; player.S=S;
@@ -447,6 +492,7 @@ function resetPlayer(){
 }
 
 const WAVE_CAP=1200; // max. Vorsprung vor der Monsterwelle (px)
+function camAnchor(){ return W<600 ? 0.26 : 0.34; } // schmale Handys: Surfer weiter links = mehr Blick nach vorn
 
 //////////////////// Camera ////////////////////
 const cam={x:0,y:0,shake:0};
@@ -636,6 +682,7 @@ function updatePlay(dt){
 
   // ----- distance / score -----
   player.dist = player.x/PXPM; // meters
+  if(!player._passedBest && save.best>=80 && player.dist>save.best){ player._passedBest=true; banner('🏁 NEUER REKORD!','Weiter als je zuvor – weiter so!'); Audio.sfx.power(); }
   player.score = Math.floor(player.dist) + player.pearls*5;
 
   // combo timer decay
@@ -647,7 +694,7 @@ function updatePlay(dt){
   if((missionTick++ & 31)===0) checkMissions();
 
   // ----- camera -----
-  cam.x = player.x - W*0.34;
+  cam.x = player.x - W*camAnchor();
   const targetCamY = player.y - H*0.52;
   cam.y = lerp(cam.y, targetCamY, dt*4);
   if(cam.shake>0) cam.shake-=dt*60;
@@ -740,7 +787,7 @@ function land(gy,P){
     } else {
       player.air=false; player.y=gy; player.angle=sang; player.vy=0;
       player.wipe=0.75; player.invPop=1.6; player.combo=0; player.mult=1;
-      runStats.lastWipeDist=player.dist;
+      runStats.lastWipeDist=player.dist; logWipe('schiefe Landung');
       floatText(sx(player.x),worldToScreenY(player.y)-40,'WIPEOUT','#ff6b6b',20);
       spray(sx(player.x)+cam.x, player.y, -1, 22, '#ffffff');
       Audio.sfx.crash(); cam.shake=14;
@@ -817,7 +864,9 @@ function collide(e,P){
     }
   }
 }
-function hitHazard(e,P){ doWipeout(); }
+const HAZARD_LABEL={rock:'Fels', jelly:'Qualle', buoy:'Boje', fin:'Hai'};
+function hitHazard(e,P){ doWipeout(HAZARD_LABEL[e.type]||'Hindernis'); }
+function logWipe(cause){ runStats.wipeLog.push({t:sea.clock, c:cause}); }
 function sharkAttack(e,P){
   // Hai = tödlich. Ausnahmen: Stern, Blink-Schonfrist, Schild (frisst den Hai statt dich)
   if(player.star>0 || player.invPop>0) return;
@@ -828,9 +877,10 @@ function sharkAttack(e,P){
   for(let i=0;i<44;i++) spawnPart(player.x, player.y, rand(-280,280), rand(-460,40), rand(0.4,0.9), rand(2,5.5), i%3? '#ffffff':'#ff4a4a', true);
   gameOver();
 }
-function doWipeout(){
+function doWipeout(cause='Hindernis'){
   if(player.star>0 || player.invPop>0 || player.wipe>0) return;
   if(player.shield){ player.shield=false; player.invPop=1.1; floatText(sx(player.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); Audio.sfx.land(false); cam.shake=8; return; }
+  logWipe(cause);
   player.air=false; player.wipe=0.75; player.vx=Math.min(player.vx,300);
   player.invPop=1.6; // kurze Schonfrist nach dem Aufstehen — verhindert unfaire Wipeout-Ketten
   runStats.lastWipeDist=player.dist;
@@ -857,7 +907,7 @@ function updateBoss(dt){
         player.pearls+=8; floatText(sx(t.x),worldToScreenY(topY)-16,'+8','#ffcaf0',16); Audio.sfx.collect(7);
       } else if(player.star<=0 && player.invPop<=0){
         if(player.shield){ player.shield=false; player.invPop=1.1; Audio.sfx.land(false); cam.shake=8; floatText(sx(t.x),worldToScreenY(player.y)-30,'SCHILD!','#7fe8ff',18); }
-        else doWipeout();
+        else doWipeout('Kraken-Tentakel');
       }
     }
   }
@@ -1160,6 +1210,47 @@ function drawWater(P){
     ctx.beginPath(); ctx.moveTo(px-40,py-120); ctx.quadraticCurveTo(px+120,py-160,px+150,py-20);
     ctx.quadraticCurveTo(px+120,py-90,px+40,py-70); ctx.quadraticCurveTo(px-10,py-60,px-40,py-120); ctx.closePath(); ctx.fill();
     ctx.strokeStyle=rgba(P.foam,0.7); ctx.lineWidth=4; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+//////////////////// Rekord-Boje: deine Bestweite steht als Fahne im Wasser ////////////////////
+function drawBestMarker(){
+  if(save.best<80) return;
+  const bxw=save.best*PXPM, X=sx(bxw); if(X<-50||X>W+50) return;
+  const Y=surfaceY(bxw)-cam.y+Math.sin(perfNow()/420)*3;
+  ctx.save();
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(X,Y); ctx.lineTo(X,Y-74); ctx.stroke();
+  ctx.fillStyle='#ffe36b'; ctx.beginPath(); ctx.moveTo(X,Y-74); ctx.lineTo(X+44,Y-64); ctx.lineTo(X,Y-54); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#1b3a55'; ctx.font='800 10px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText('BEST',X+4,Y-64);
+  ctx.fillStyle='#ff5a4a'; ctx.beginPath(); ctx.ellipse(X,Y+2,13,6,0,0,TAU); ctx.fill();
+  ctx.fillStyle='#ffffff'; ctx.fillRect(X-13,Y,26,2.5);
+  ctx.restore();
+}
+
+//////////////////// Gefahren-Vorwarnung ////////////////////
+// Jedes Hindernis wird ~1,2 s vor Ankunft am rechten Rand angekündigt – unabhängig von Bildschirmbreite
+// und Tempo. Vorher sah man es auf dem iPhone nur 0,2–0,4 s vorher (unter der menschlichen Reaktionszeit).
+const WARN_SEC=1.2;
+function drawHazardWarnings(){
+  const v=Math.max(player.vx,300), edgeX=cam.x+W-8;
+  const list=[];
+  for(const e of ents){ if(HAZARDS.has(e.type)) list.push({x:e.x, y:e.y, shark:e.type===ENT.FIN, tent:false}); }
+  if(bossState.active) for(const t of bossState.tents) if(t.alive) list.push({x:t.x, y:t.y0-t.h*0.5, shark:true, tent:true});
+  for(const h of list){
+    if(h.x <= edgeX) continue;                      // schon im Bild
+    const tta=(h.x-player.x)/v; if(tta>WARN_SEC) continue;
+    const k=1-tta/WARN_SEC;                         // 0 = gerade angekündigt, 1 = gleich da
+    const X=W-24, Y=clamp(h.y-cam.y-14, 120, H-70), r=15, col=h.shark?'#ff3b4a':'#ffb03a';
+    ctx.save(); ctx.globalAlpha=0.7+0.3*k;
+    ctx.fillStyle=rgba(col,0.3+0.3*k*(0.6+0.4*Math.sin(perfNow()/(h.shark?70:110))));
+    ctx.beginPath(); ctx.arc(X,Y,r+9,0,TAU); ctx.fill();
+    ctx.fillStyle='rgba(8,24,40,.55)'; ctx.beginPath(); ctx.arc(X,Y,r+4.5,0,TAU); ctx.fill(); // Kontrast auf hellem Himmel
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(X,Y,r,0,TAU); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(X,Y,r+3,-Math.PI/2,-Math.PI/2+TAU*k); ctx.stroke(); // Countdown
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const shark=h.shark&&!h.tent; ctx.font=(shark?'16px':'900 17px')+' system-ui'; ctx.fillText(shark?'🦈':'!', X, Y+1);
+    ctx.beginPath(); ctx.moveTo(X+r+6,Y); ctx.lineTo(X+r,Y-5); ctx.lineTo(X+r,Y+5); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 }
@@ -1598,27 +1689,62 @@ function pauseClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.but
 function gameOverToMenu(){ bankRun(); state='menu'; }
 
 //////////////////// Screen: Game Over ////////////////////
+function wrapText(txt, cx, y, maxW, lh){
+  const lines=[]; let line='';
+  for(const w of txt.split(' ')){ const t=line?line+' '+w:w; if(ctx.measureText(t).width>maxW && line){ lines.push(line); line=w; } else line=t; }
+  if(line) lines.push(line);
+  lines.forEach((l,i)=>ctx.fillText(l,cx,y+i*lh)); return y+(lines.length-1)*lh;
+}
 function drawOver(){
-  drawScene(); // frozen scene
-  ctx.save(); ctx.fillStyle='rgba(4,18,31,.62)'; ctx.fillRect(0,0,W,H);
-  ctx.textAlign='center';
-  const overTitle = player.newBest? 'NEUER REKORD!' : (player.deathBy==='shark'? '🦈 GEFRESSEN!' : 'WIPEOUT!');
-  ctx.font='900 40px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(overTitle, W/2, H*0.2);
-  ctx.font='800 60px system-ui'; ctx.fillStyle= player.newBest?'#ffe36b':'#7fe8ff'; ctx.fillText(Math.floor(player.dist)+' m', W/2, H*0.28);
-  ctx.font='600 16px system-ui'; ctx.fillStyle='rgba(255,255,255,.85)';
-  ctx.fillText('◐ '+player.pearls+' Perlen gesammelt   ·   Best '+save.best+' m', W/2, H*0.28+56);
+  drawScene(false); // frozen scene, ohne HUD/Banner
+  const rp=runReport;
+  ctx.save(); ctx.fillStyle='rgba(4,18,31,.8)'; ctx.fillRect(0,0,W,H);
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  const cw=Math.min(W-32,420), cx=W/2, x0=cx-cw/2;
+  let y=Math.max(44,H*0.07);
+  const overTitle = player.newBest? '🏁 NEUER REKORD!' : (player.deathBy==='shark'? '🦈 GEFRESSEN!' : '🌊 EINGEHOLT!');
+  ctx.font='900 28px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(overTitle, cx, y);
+  y+=48; ctx.font='800 44px system-ui'; ctx.fillStyle=player.newBest?'#ffe36b':'#7fe8ff'; ctx.fillText(Math.floor(player.dist)+' m', cx, y);
+  if(rp && rp.cause){ y+=26; ctx.font='500 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.82)'; y=wrapText(rp.cause, cx, y, cw, 17); }
+  if(rp){
+    // Dieser Run vs. Rekord – 🏆 markiert neue Bestwerte
+    y+=16;
+    const rows=[['Distanz','dist',v=>v+' m'],['Perlen','pearls',v=>'◐ '+v],['Flips','flips',v=>''+v],['Beste Combo','combo',v=>'x'+(+v).toFixed(1)],['Serie ohne Wipeout','streak',v=>v+' m']];
+    const rh=23, cRun=x0+cw*0.70, cRec=x0+cw-14, boxH=rows.length*rh+30;
+    roundRect(x0,y,cw,boxH,12); ctx.fillStyle='rgba(255,255,255,.07)'; ctx.fill();
+    ctx.font='700 10px system-ui'; ctx.fillStyle='rgba(255,255,255,.5)'; ctx.textAlign='right';
+    ctx.fillText('DIESER RUN', cRun, y+17); ctx.fillText('REKORD', cRec, y+17);
+    rows.forEach(([lab,key,f],i)=>{ const ry=y+38+i*rh;
+      ctx.textAlign='left'; ctx.font='500 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText(lab, x0+14, ry);
+      ctx.textAlign='right'; ctx.font='700 14px system-ui';
+      ctx.fillStyle=rp.isNew[key]?'#ffe36b':'#fff'; ctx.fillText((rp.isNew[key]?'🏆 ':'')+f(rp.vals[key]), cRun, ry);
+      ctx.font='500 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.5)'; ctx.fillText(f(Math.max(rp.vals[key], rp.prev[key]||0)), cRec, ry);
+    });
+    y+=boxH;
+    // Trend der letzten Runs
+    const h=rp.history;
+    if(h.length>=2){
+      y+=22; ctx.textAlign='left'; ctx.font='700 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText('Deine letzten Runs', x0, y);
+      if(h.length>=6){ const avg=a=>a.reduce((s,v)=>s+v,0)/a.length, a=avg(h.slice(-3)), b=avg(h.slice(-6,-3)), pct=Math.round((a-b)/Math.max(1,b)*100);
+        ctx.textAlign='right'; ctx.fillStyle=pct>=0?'#39e88a':'#ffb03a'; ctx.fillText((pct>=0?'▲ +':'▼ ')+pct+'% (Ø letzte 3)', x0+cw, y); }
+      y+=8; const ch=50, n=h.length, gap=6, bw=(cw-(n-1)*gap)/n, mx=Math.max(...h,1);
+      h.forEach((d,i)=>{ const bh=Math.max(3,ch*d/mx); roundRect(x0+i*(bw+gap), y+ch-bh, bw, bh, 3); ctx.fillStyle=i===n-1?'#7fe8ff':'rgba(255,255,255,.26)'; ctx.fill(); });
+      y+=ch;
+    }
+    if(rp.tip){ y+=24; ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='#ffe36b'; y=wrapText('💡 '+rp.tip, cx, y, cw, 17); }
+  }
   ctx.restore();
-  uiButtons=[]; const bw=Math.min(260,W*0.7), bx=(W-bw)/2;
-  btn('retry',bx,H*0.5,bw,58,'↻  Nochmal',{c1:'#2fd0ff',c2:'#1b7fd6',fs:20});
-  btn('shop2',bx,H*0.5+70,bw*0.48,46,'🛍 Shop',{c1:'#ffb84d',c2:'#e07a2b',fs:15});
-  btn('menu',bx+bw*0.52,H*0.5+70,bw*0.48,46,'⌂ Menü',{c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+  uiButtons=[]; const bw=Math.min(260,W*0.7), bx=(W-bw)/2, by=Math.min(Math.max(y+22, H-140), H-116);
+  btn('retry',bx,by,bw,52,'↻  Nochmal',{c1:'#2fd0ff',c2:'#1b7fd6',fs:20});
+  btn('shop2',bx,by+62,bw*0.48,44,'🛍 Shop',{c1:'#ffb84d',c2:'#e07a2b',fs:15});
+  btn('menu',bx+bw*0.52,by+62,bw*0.48,44,'⌂ Menü',{c1:'#7a8aa0',c2:'#4a5a70',fs:15});
   drawButtons();
 }
 function overClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
   if(id==='retry') startGame(); else if(id==='menu') state='menu'; else if(id==='shop2'){ state='shop'; shopTab='boards'; } }
 
 //////////////////// Scene compositor ////////////////////
-function drawScene(){
+function drawScene(withHud=true){
   const P=pal(player.dist);
   applyShake();
   ctx.save(); ctx.translate(shakeX,shakeY);
@@ -1626,6 +1752,7 @@ function drawScene(){
   drawBackground(P,player.dist);
   drawWhale(P);   // vor dem Wasser: der Teil unter der Oberfläche wird verdeckt
   drawWater(P);
+  drawBestMarker();
   drawChaser(P);
   drawEntities(P);
   drawDolphin(P);
@@ -1639,6 +1766,8 @@ function drawScene(){
     ctx.restore(); }
   drawWeather(P);
   ctx.restore();
+  if(!withHud) return; // Auswertungs-Bildschirm: nur die eingefrorene Szene als Hintergrund
+  drawHazardWarnings();
   drawHUD(P);
 }
 

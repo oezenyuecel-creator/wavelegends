@@ -17,6 +17,16 @@ schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 - **Perfekter Flip**: abspringen → in der Luft **neu drücken und halten** → das Board dreht mit festem Tempo (ein Flip ≈ ½ Sekunde) → **loslassen, sobald der Ring um den Surfer GRÜN ist**. Loslassen stoppt die Drehung sofort, ein Lande-Assistent richtet das Board auf die Welle aus. Bei Mini-Hüpfern (Ring bleibt rot) lieber nicht flippen.
 - **Tricks geben Speed**: jeder gelandete Flip beschleunigt dich zusätzlich (+6 % pro Flip).
 
+## Fair & lernbar: Können statt Glück
+Gemessen auf iPhone-Breite: vorher war ein Hindernis bei Vollgas nur 0,2–0,4 s sichtbar (unter der
+Reaktionszeit), und 43 % aller Hindernis-Paare lagen zu weit für einen Sprung, aber zu nah zum Landen und
+neu Abspringen. Ein reagierender Spieler kam dadurch nicht weiter als einer, der nie springt. Jetzt:
+- **⚠-Vorwarnung** am rechten Rand ~1,2 s vor jedem Hindernis (🦈 rot für Haie), mit Countdown-Ring — unabhängig von Bildschirmbreite und Tempo
+- **Faire Abstände**: Hindernisse kommen entweder als Gruppe, die ein Sprung nimmt, oder mit genug Zeit zum Landen (Haie mit extra Abstand, nie in Gruppen); die ersten ~3 s sind frei
+- **Run-Analyse** nach jedem Lauf: Todesursache in Klartext, dein Wert vs. Rekord pro Disziplin (🏆 bei neuem Bestwert), Trend der letzten 10 Runs (▲ +X %) und ein gezielter Tipp
+- **Rekord-Boje** 🏁: deine Bestweite steht als Fahne im Wasser
+Ergebnis (Bot mit 0,3 s Reaktionszeit, 14 Läufe): Median 6.256 m statt 3.479 m — Können zahlt sich jetzt aus.
+
 ## Steuerung (One-Button, mobile-first)
 - **HALTEN** = die Wellenflanke *anpumpen* → Speed aufbauen; am Kamm abheben (loslassen = Absprung-Pop für höhere Airs)
 - **In der Luft HALTEN** = **Flip/Rotation** (Trickpunkte) → rechtzeitig loslassen, um sauber & gerade zu landen
