@@ -19,7 +19,7 @@ schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 
 ## Gratis & Vollversion (keine Werbung, nie)
 Modell „kostenlos starten, einmal zahlen":
-- **Gratis**: Tropenbucht, Sonnenuntergang, Sturmsee mit Kraken, Missionen und Daily Challenge. Kein harter Stopp: Am Ende der Sturmsee zeigt ein **Vorgeschmack-Fenster** kurz die Nacht-Welten, dann geht es in der Tropenbucht weiter, sodass Gratis-Spieler endlos um den Highscore surfen.
+- **Gratis**: Tropenbucht, Sonnenuntergang, Sturmsee mit Kraken, Missionen und Daily Challenge. Kein harter Stopp: Nach der Sturmsee surft man ein paar Sekunden **echt in die biolumineszente Nacht** (Banner „🌙 Vorgeschmack"), dann wird es wieder Tag in der Tropenbucht — Gratis-Spieler surfen endlos um den Highscore. Kein Fenster mitten im Lauf, nichts zum Anklicken.
 - **Vollversion (Einmalkauf, Platzhalter 3,99 €)**: 🌙 Biolumineszente Nacht + Polarlichter, 🌠 Sternschnuppen-Events, Nachtsurfer-Paket (Surferin **Nova** mit leuchtendem Anzug + **Polarlicht-Board**, reine Optik, gleiche Werte wie das Holzboard: Echtgeld kauft nie Vorteile).
 - **Kaufseite** im Hoch-Moment: Hinweis in der Auswertung nach dem ersten Kraken bzw. am Ende der Gratis-Strecke, dazu „🌙 Vollversion" im Menü und bei den Premium-Artikeln im Shop. Im Prototyp ist der Kauf ein klar markierter **Test-Kauf** (es wird nichts abgebucht); „Käufe wiederherstellen" und echte Zahlung kommen mit der App-Store-Version. Zum Testen lässt sich die Vollversion auf der Kaufseite zurücksetzen.
 - **📤 Rekord teilen**: Nach jedem Run erzeugt das Spiel ein Rekord-Bild (Distanz, Combo, Perlen, „Schaffst du das?" + Link) und öffnet auf dem Handy das Teilen-Menü (WhatsApp & Co.); am Desktop wird es heruntergeladen.

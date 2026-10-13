@@ -295,10 +295,12 @@ const BIOMES = [
     sky:['#04122a','#0a2444'], sun:'#eaf4ff', sunGlow:'#9fd0ff', water:['#12546b','#0c3a52','#062231'], foam:'#d8fff4',
     accent:'#8affc8', islands:false, gulls:false, rain:false, stars:true, aurora:true, biolum:false, waveScale:1.0, difficulty:1.5 },
 ];
-// Gratis: Tropenbucht, Sonnenuntergang, Sturmsee (mit Kraken) im Kreis; Vollversion: alle 5 Welten.
+// Gratis: Tropenbucht, Sonnenuntergang, Sturmsee (mit Kraken), dann ein kurzer Ausflug in die Nacht
+// als Vorgeschmack, danach wieder Tropenbucht. Vollversion: alle 5 Welten.
 // Darf sich nur zwischen Runs ändern – das Gelände hängt über wsAt() am Biom.
-const BIOMES_FREE = BIOMES.slice(0,3);
-const FREE_CYCLE = BIOMES[3].dist, FULL_CYCLE = 4320;
+const TEASER_START = BIOMES[3].dist, TEASER_LEN = 900; // ≈6 s Nacht bei Vollgas, ≈8 s bei normalem Tempo
+const BIOMES_FREE = [...BIOMES.slice(0,3), BIOMES[3]];
+const FREE_CYCLE = TEASER_START + TEASER_LEN, FULL_CYCLE = 4320;
 function biomeAt(dist){
   const list = save.fullVersion ? BIOMES : BIOMES_FREE;
   const cycle = save.fullVersion ? FULL_CYCLE : FREE_CYCLE;
@@ -696,9 +698,9 @@ function updatePlay(dt){
   // ----- distance / score -----
   player.dist = player.x/PXPM; // meters
   if(!player._passedBest && save.best>=80 && player.dist>save.best){ player._passedBest=true; banner('🏁 NEUER REKORD!','Weiter als je zuvor – weiter so!'); Audio.sfx.power(); }
-  // Ende der Gratis-Strecke: kein Stopp, nur ein Vorgeschmack auf die Nacht-Welten, dann geht's in der Tropenbucht weiter
-  if(!save.fullVersion){ const lap=Math.floor((player.dist+120)/FREE_CYCLE);
-    if(lap>runStats.gatesSeen && !bossState.active){ runStats.gatesSeen=lap; sea.glimpseT=3.2; Audio.sfx.chime(); } }
+  // Gratis: beim Einfahren in den Nacht-Vorgeschmack kurz ansagen, was das ist
+  if(!save.fullVersion && player.dist>=TEASER_START){ const lap=Math.floor((player.dist-TEASER_START)/FREE_CYCLE)+1;
+    if(lap>runStats.gatesSeen){ runStats.gatesSeen=lap; banner('🌙 VORGESCHMACK','Die Nacht-Welten · in der Vollversion'); Audio.sfx.chime(); } }
   player.score = Math.floor(player.dist) + player.pearls*5;
 
   // combo timer decay
@@ -939,14 +941,14 @@ function resetSea(){
   sea.clock=0; sea.nextT=4.5; sea.last=null;
   sea.dolphin=null; sea.whale=null;
   sea.meteors=[]; sea.meteorShower=0; sea.meteorSpawn=0; sea.ambientMeteorT=4;
-  sea.showerT=0; sea.showerA=0; sea.rainbowOn=0; sea.rainbowA=0; sea.glimpseT=0;
+  sea.showerT=0; sea.showerA=0; sea.rainbowOn=0; sea.rainbowA=0;
 }
 resetSea();
 const SEA_EVENTS=[
   {key:'dolphin',  w:1.0, ok:()=>true},
   {key:'treasure', w:1.0, ok:()=>true},
   {key:'whale',    w:0.8, ok:()=>true},
-  {key:'meteors',  w:1.6, ok:(P)=>P.starA>0.5},
+  {key:'meteors',  w:1.6, ok:(P)=>save.fullVersion && P.starA>0.5}, // gehört zur Vollversion, nicht in den Vorgeschmack
   {key:'rainbow',  w:1.0, ok:()=>{ const b=biomeAt(player.dist); return (b.cur.key==='tropic'||b.cur.key==='sunset') && b.t<0.2; }},
 ];
 function seaBusy(){ return !!(sea.dolphin || sea.whale || sea.meteorShower>0 || sea.showerT>0 || sea.rainbowOn>0); }
@@ -964,7 +966,6 @@ function updateSea(dt,P){
     }
   }
   updateDolphin(dt,P); updateWhale(dt,P); updateMeteors(dt,P); updateRainbow(dt,P);
-  if(sea.glimpseT>0) sea.glimpseT-=dt;
 }
 function startSeaEvent(k,P){
   if(k==='dolphin'){
@@ -1548,9 +1549,11 @@ function drawHUD(P){
   // banner
   if(bannerData.t>0){ const a=clamp(bannerData.t/0.6,0,1)*clamp((2.4-bannerData.t)/0.4,0,1);
     ctx.save(); ctx.globalAlpha=Math.min(1,a); ctx.textAlign='center';
-    ctx.font='900 34px system-ui'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12;
+    const fit=(txt,px,weight)=>{ ctx.font=weight+' '+px+'px system-ui'; const w=ctx.measureText(txt).width;
+      if(w>W-28) ctx.font=weight+' '+Math.floor(px*(W-28)/w)+'px system-ui'; }; // schmale Handys: nie über den Rand
+    fit(bannerData.title,34,900); ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=12;
     ctx.fillText(bannerData.title, W/2, H*0.3);
-    ctx.font='600 16px system-ui'; ctx.fillStyle=rgba(P.accent,1); ctx.fillText(bannerData.sub, W/2, H*0.3+40);
+    fit(bannerData.sub,16,600); ctx.fillStyle=rgba(P.accent,1); ctx.fillText(bannerData.sub, W/2, H*0.3+40);
     ctx.restore();
   }
   // floaters
@@ -1725,18 +1728,6 @@ function drawWorldPreview(key,x,y,w,h){
   if(key==='biolum'){ for(let i=0;i<18;i++){ ctx.globalAlpha=A*(0.3+0.6*Math.abs(Math.sin(t/350+i))); ctx.fillStyle=P.foam; ctx.beginPath(); ctx.arc(x+((i*53)%w), wy+9+((i*13)%Math.max(4,y+h-wy-12)), 1.8,0,TAU); ctx.fill(); } }
   ctx.restore();
   ctx.save(); ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=1.5; roundRect(x,y,w,h,14); ctx.stroke(); ctx.restore();
-}
-// Vorgeschmack am Ende der Gratis-Strecke
-function drawGlimpse(){
-  if(!(sea.glimpseT>0)) return;
-  const u=clamp(1-sea.glimpseT/3.2,0,1), a=clamp(Math.sin(Math.PI*u)*1.6,0,1);
-  const w=Math.min(W-48,340), h=92, x=(W-w)/2, y=Math.max(132,H*0.15), half=(w-8)/2;
-  ctx.save(); ctx.globalAlpha=a;
-  drawWorldPreview('biolum', x, y, half, h); drawWorldPreview('aurora', x+half+8, y, half, h);
-  ctx.textAlign='center'; ctx.textBaseline='top'; ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=8;
-  ctx.font='800 15px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('🔒 Die Nacht-Welten', W/2, y+h+10);
-  ctx.font='600 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.88)'; ctx.fillText('Biolumineszenz & Polarlichter – in der Vollversion', W/2, y+h+30);
-  ctx.restore();
 }
 
 let unlockFrom='menu', unlockConfirm=false, unlockMsg={t:0,text:''}, confetti=[];
@@ -1988,7 +1979,6 @@ function drawScene(withHud=true){
   drawWeather(P);
   ctx.restore();
   if(!withHud) return; // Auswertungs-Bildschirm: nur die eingefrorene Szene als Hintergrund
-  drawGlimpse();
   drawHazardWarnings();
   drawHUD(P);
 }
