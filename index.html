@@ -56,6 +56,7 @@ const save = Object.assign({
   best:0, pearls:0, runs:0, soundOn:true, fullVersion:false,
   board:'wood', surfer:'kai',
   ownedBoards:['wood'], ownedSurfers:['kai'],
+  trail:'foam', ownedTrails:['foam'], stats:{}, ach:{}, upgrades:{},
 }, load());
 function load(){try{return JSON.parse(localStorage.getItem(SAVE_KEY))||{};}catch(e){return {};}}
 function persist(){try{localStorage.setItem(SAVE_KEY, JSON.stringify(save));}catch(e){}}
@@ -113,7 +114,7 @@ const DAILY_POOL=[
   {id:'dy_boss',  txt:'Besiege den Kraken',      stat:'boss',  scope:'run', n:1,    rew:250},
 ];
 let runStats={}, missionTick=0;
-function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[],gatesSeen:0,releaseJumps:0}; }
+function resetRunStats(){ runStats={tricks:0,flips:0,grabs:0,nearMiss:0,powerups:0,boss:0,maxMult:1,lastWipeDist:0,noWipeBest:0,dolphin:0,chest:0,whale:0,shards:0,wipeLog:[],gatesSeen:0,releaseJumps:0,missionsDone:0,achNew:[]}; }
 resetRunStats();
 function missionDef(id){ return MISSION_POOL.find(m=>m.id===id)||DAILY_POOL.find(m=>m.id===id); }
 function ensureMissions(){
@@ -144,6 +145,7 @@ function runStatValue(stat){
 function missionValue(slot){ const d=missionDef(slot.id); return (d.scope==='total'? slot.prog:0) + runStatValue(d.stat); }
 function grantMission(d){
   if(state==='play') player.pearls+=d.rew; else save.pearls+=d.rew;
+  runStats.missionsDone++;
   banner('🎯 MISSION ERFÜLLT!', d.txt+'  ·  +'+d.rew+' ◐');
   Audio.sfx.power();
 }
@@ -193,10 +195,119 @@ function buildRunReport(){
 function bankRun(){
   buildRunReport();
   finalizeMissions();
+  checkAchievements(true); // letzte Prüfung mit den Werten dieses Laufs – danach wandern sie in die Lebenszeit-Statistik
+  const st=save.stats, add=(k,v)=>st[k]=(st[k]||0)+v;
+  add('dist',Math.floor(player.dist)); add('flips',runStats.flips); add('grabs',runStats.grabs); add('boss',runStats.boss);
+  add('pearls',player.pearls); add('nearMiss',runStats.nearMiss); add('chest',runStats.chest);
+  add('friends',runStats.dolphin+runStats.whale); add('shards',runStats.shards);
+  runReport.xp = grantXp(runXp());
   save.pearls += player.pearls;
   if(Math.floor(player.dist)>save.best){ save.best=Math.floor(player.dist); player.newBest=true; } else player.newBest=false;
   persist();
 }
+
+//////////////////// Fortschritt: Rang · Erfolge · Upgrades · Trails · Tages-Serie ////////////////////
+// Ohne diese Systeme war nach ~26 Läufen (~19 min) alles gekauft und Perlen wurden wertlos.
+
+// --- Trails: Spur hinter dem Board, nur erspielbar (Rang/Erfolge), nie kaufbar ---
+const TRAILS={
+  foam:   {name:'Gischt',       how:'Standard'},
+  stars:  {name:'Sternenstaub', how:'Rang 10'},
+  fire:   {name:'Feuer',        how:'🥇 Flip-Meister'},
+  rainbow:{name:'Regenbogen',   how:'🥇 Weitsurfer'},
+  biolum: {name:'Leuchtspur',   how:'Rang 25'},
+  ink:    {name:'Kraken-Tinte', how:'🥇 Kraken-Jäger'},
+  pearls: {name:'Perlenkette',  how:'🥇 Perlentaucher'},
+  gold:   {name:'Goldspur',     how:'Rang 40'},
+};
+function unlockTrail(k){ if(save.ownedTrails.includes(k)) return false; save.ownedTrails.push(k); return true; }
+
+// --- Surfer-Rang ---
+const RANKS=[[1,'Anfänger'],[3,'Wasserratte'],[6,'Wellenreiter'],[10,'Brandungs-Profi'],[15,'Barrel-Jäger'],[20,'Sturmreiter'],[25,'Nachtsurfer'],[30,'Kraken-Bezwinger'],[40,'Meister der Meere'],[50,'Wave Legend']];
+const RANK_TRAILS={10:'stars',25:'biolum',40:'gold'};
+function xpNeed(l){ return 400+l*200; }
+function levelInfo(xp){ let l=1; while(xp>=xpNeed(l)){ xp-=xpNeed(l); l++; } return {level:l, into:xp, need:xpNeed(l)}; }
+function rankTitle(l){ let t=RANKS[0][1]; for(const [lv,n] of RANKS) if(l>=lv) t=n; return t; }
+function runXp(){
+  return Math.floor(player.dist/10) + runStats.tricks*5 + runStats.flips*10 + runStats.boss*100 + runStats.nearMiss*15
+       + (runStats.chest+runStats.dolphin+runStats.whale+runStats.shards)*20 + runStats.missionsDone*50;
+}
+function grantXp(xp){
+  const before=levelInfo(save.xp).level; save.xp+=xp; const after=levelInfo(save.xp).level;
+  let pearls=0; const trails=[];
+  for(let l=before+1;l<=after;l++){ pearls+=100+l*20; if(RANK_TRAILS[l] && unlockTrail(RANK_TRAILS[l])) trails.push(RANK_TRAILS[l]); }
+  save.pearls+=pearls;
+  return {xp, before, after, pearls, trails};
+}
+
+// --- Erfolge: Bronze/Silber/Gold ---
+const ACH=[
+  {id:'dist',   icon:'🏁', name:'Weitsurfer',       scope:'run',  val:()=>player.dist,          rec:()=>save.best||0,                       tiers:[1000,3000,6000],  unit:'m', gold:'rainbow'},
+  {id:'flips',  icon:'🔄', name:'Flip-Meister',     scope:'life', key:'flips',                                                               tiers:[10,50,200],       unit:'Flips', gold:'fire'},
+  {id:'grabs',  icon:'🤙', name:'Grab-Künstler',    scope:'life', key:'grabs',                                                               tiers:[10,50,150],       unit:'Grabs'},
+  {id:'boss',   icon:'🐙', name:'Kraken-Jäger',     scope:'life', key:'boss',                                                                tiers:[1,5,20],          unit:'Kraken', gold:'ink'},
+  {id:'combo',  icon:'🔥', name:'Combo-König',      scope:'run',  val:()=>runStats.maxMult,     rec:()=>(save.records||{}).combo||0,        tiers:[3,6,10],          unit:'', pre:'x'},
+  {id:'pearls', icon:'◐',  name:'Perlentaucher',    scope:'life', key:'pearls',                                                              tiers:[1000,5000,20000], unit:'Perlen', gold:'pearls'},
+  {id:'near',   icon:'🦈', name:'Hai-Flüsterer',    scope:'life', key:'nearMiss',                                                            tiers:[1,10,30],         unit:'knapp'},
+  {id:'chest',  icon:'💰', name:'Schatzjäger',      scope:'life', key:'chest',                                                               tiers:[1,10,30],         unit:'Truhen'},
+  {id:'friends',icon:'🐬', name:'Meeresfreund',     scope:'life', key:'friends',                                                             tiers:[3,15,40],         unit:'Begegnungen'},
+  {id:'streak', icon:'🛡', name:'Unerschütterlich', scope:'run',  val:()=>runStats.noWipeBest,  rec:()=>(save.records||{}).streak||0,       tiers:[500,1500,3000],   unit:'m ohne Wipeout'},
+  {id:'total',  icon:'🌊', name:'Dauersurfer',      scope:'life', key:'dist', div:1000,                                                      tiers:[10,50,200],       unit:'km'},
+  {id:'shards', icon:'🌠', name:'Sternenfänger',    scope:'life', key:'shards', full:true,                                                   tiers:[3,15,40],         unit:'Splitter'},
+];
+const TIER_NAMES=['Bronze','Silber','Gold'], TIER_MEDALS=['🥉','🥈','🥇'], TIER_PEARLS=[100,300,750];
+function runLife(key){ return key==='dist'?player.dist : key==='pearls'?player.pearls : key==='friends'?runStats.dolphin+runStats.whale : (runStats[key]||0); }
+function achValue(a, live){
+  if(a.scope==='run') return live ? Math.max(a.val(), a.rec()) : a.rec();
+  const v=(save.stats[a.key]||0) + (live ? runLife(a.key) : 0);
+  return a.div ? v/a.div : v;
+}
+function awardAch(a, tier, silent){
+  save.ach[a.id]=tier+1; save.pearls+=TIER_PEARLS[tier];
+  const trail = tier===2 && a.gold && unlockTrail(a.gold);
+  if(!silent){ banner('🏆 '+a.name+' · '+TIER_NAMES[tier], '+'+TIER_PEARLS[tier]+' ◐'+(trail?' + Trail „'+TRAILS[a.gold].name+'"':'')); Audio.sfx.chest();
+    runStats.achNew.push(a.name+' '+TIER_MEDALS[tier]); }
+}
+function checkAchievements(live){
+  for(const a of ACH){
+    if(a.full && !save.fullVersion) continue;
+    let tier=save.ach[a.id]||0; const v=achValue(a, live);
+    while(tier<3 && v>=a.tiers[tier]){ awardAch(a, tier, false); tier++; }
+  }
+}
+function achCount(){ return ACH.reduce((s,a)=>s+(save.ach[a.id]||0),0); }
+
+// --- Power-Up-Upgrades (nur mit Perlen, nie mit Echtgeld) ---
+const UPGRADES={
+  magnet:{name:'Magnet', icon:'🧲', base:8,   step:2,   unit:' s', what:'Dauer'},
+  turbo: {name:'Turbo',  icon:'⚡', base:2.4, step:0.5, unit:' s', what:'Dauer'},
+  star:  {name:'Stern',  icon:'★',  base:6,   step:1,   unit:' s', what:'Dauer'},
+  shield:{name:'Schild', icon:'🛡', base:0,   step:15,  unit:' %', what:'Start mit Schild'},
+};
+const UPG_COST=[500,1200,2500,4500,8000];
+function upLv(k){ return save.upgrades[k]||0; }
+function upVal(k,lv=upLv(k)){ return Math.round((UPGRADES[k].base+UPGRADES[k].step*lv)*10)/10; }
+function buyUpgrade(k){ const lv=upLv(k); if(lv>=UPG_COST.length || save.pearls<UPG_COST[lv]) return false; save.pearls-=UPG_COST[lv]; save.upgrades[k]=lv+1; persist(); return true; }
+
+// --- Tages-Serie: 7 Tage, danach von vorn ---
+const STREAK_REWARDS=[100,150,200,300,400,500,1000];
+function localDate(d=new Date()){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function streakOffer(){ // Tag 1–7, der heute abgeholt werden kann; null = heute schon abgeholt
+  const s=save.streak||{}; if(s.last===localDate()) return null;
+  const y=new Date(); y.setDate(y.getDate()-1);
+  return (s.last===localDate(y) && s.day) ? (s.day%7)+1 : 1;
+}
+function claimStreak(){ const day=streakOffer(); if(!day) return 0; const r=STREAK_REWARDS[day-1]; save.streak={last:localDate(), day}; save.pearls+=r; persist(); return r; }
+
+// Bestehende Spielstände: Start-Erfahrung fürs bisherige Spielen (ohne Level-Belohnungen) und schon erreichte Rekorde als Erfolge
+function initProgress(){
+  if(save.xp===undefined) save.xp=Math.min(save.runs||0,200)*200;
+  if(!save.achInit){ save.achInit=true;
+    for(const a of ACH){ if(a.scope!=='run') continue; let tier=save.ach[a.id]||0; const v=a.rec(); while(tier<3 && v>=a.tiers[tier]){ awardAch(a,tier,true); tier++; } } }
+  const lv=levelInfo(save.xp).level; for(const l in RANK_TRAILS) if(lv>=+l) unlockTrail(RANK_TRAILS[l]);
+  persist();
+}
+initProgress();
 
 //////////////////// Audio (procedural, no assets) ////////////////////
 const Audio = (()=>{
@@ -402,6 +513,7 @@ function resetWorld(){
   ents.length=0; parts.length=0; floaters.length=0;
   lastSpawnX = 700; lastHzX=-1e9; lastHzShark=false;
   bossState.active=false; bossState.next=2200; bossState.hits=0; bossState.banner=0;
+  bannerQueue.length=0; bannerData.t=0;
   resetSea();
 }
 function spawnAhead(px){
@@ -457,7 +569,7 @@ function maybeBoss(){
     const t0=bossState.tents[0].x, t1=bossState.tents[bossState.tents.length-1].x;
     for(let i=ents.length-1;i>=0;i--){ if(HAZARDS.has(ents[i].type) && ents[i].x>t0-900 && ents[i].x<t1+900) ents.splice(i,1); }
     lastHzX=t1; lastHzShark=true;
-    banner('⚠ KRAKEN ⚠','Spring über die Tentakel!');
+    banner('⚠ KRAKEN ⚠','Spring über die Tentakel!',true);
     Audio.sfx.boost();
   }
   if(bossState.active){
@@ -477,8 +589,13 @@ function maybeBoss(){
 //////////////////// Floating score text ////////////////////
 const floaters=[];
 function floatText(x,y,txt,color='#fff',size=18){ floaters.push({x,y,txt,color,size,life:1.1,max:1.1}); }
-let bannerData={t:0,title:'',sub:''};
-function banner(title,sub){ bannerData={t:2.4,title,sub}; }
+let bannerData={t:0,title:'',sub:''}, bannerQueue=[];
+// Belohnungs-Banner stehen Schlange statt sich zu überschreiben; Warnungen (urgent) kommen sofort
+function banner(title,sub,urgent=false){
+  if(bannerData.t>0.3 && !urgent){ if(bannerQueue.length<5) bannerQueue.push({title,sub}); return; }
+  if(urgent && bannerData.t>0.3) bannerQueue.unshift({title:bannerData.title, sub:bannerData.sub});
+  bannerData={t:2.4,title,sub};
+}
 
 //////////////////// Player ////////////////////
 const player = {
@@ -503,6 +620,7 @@ function resetPlayer(){
   player.B=B; player.S=S;
   // Perks
   if(save.surfer==='luna' && Math.random()<0.5) player.shield=true; // Startschild-Chance
+  if(Math.random()*100 < upVal('shield')) player.shield=true;       // Schild-Upgrade
 }
 
 const WAVE_CAP=1200; // max. Vorsprung vor der Monsterwelle (px)
@@ -513,14 +631,17 @@ const cam={x:0,y:0,shake:0};
 function worldToScreenY(wy){ return wy - cam.y; }
 
 //////////////////// Input ////////////////////
-let pointer={down:false,x:0,y:0};
+let pointer={down:false,x:0,y:0,sy:0,moved:false,startScroll:0};
+// Scrollbare Listen: Klick erst beim Loslassen ohne Wischen – sonst würde ein Wischstart auf einem Preis-Knopf kaufen
+const SCROLL_STATES=new Set(['shop','achievements']);
+let listScroll=0, listMax=0;
 function press(x,y){
-  pointer.down=true; pointer.x=x; pointer.y=y;
+  pointer.down=true; pointer.x=x; pointer.y=y; pointer.sy=y; pointer.moved=false; pointer.startScroll=listScroll;
   Audio.resume();
   if(state==='menu'){ menuClick(x,y); return; }
   if(state==='missions'){ missionsClick(x,y); return; }
   if(state==='unlock'){ unlockClick(x,y); return; }
-  if(state==='shop'){ shopClick(x,y); return; }
+  if(SCROLL_STATES.has(state)) return;
   if(state==='over'){ overClick(x,y); return; }
   if(state==='play'){
     if(tut.active && hitButton(x,y)==='tut_skip'){ endTutorial(true); return; } // kein Sprung beim Überspringen
@@ -528,7 +649,8 @@ function press(x,y){
   if(state==='pause'){ /* handled via button */ pauseClick(x,y); }
   hud.hintFade=true;
 }
-function release(){ pointer.down=false; if(pendingShare){ pendingShare=false; doShare(); }
+function release(){ const wasDown=pointer.down; pointer.down=false; if(pendingShare){ pendingShare=false; doShare(); }
+  if(wasDown && !pointer.moved && SCROLL_STATES.has(state)) (state==='shop'?shopClick:achClick)(pointer.x,pointer.y);
   if(state==='play'){ player.holding=false;
   if(player.air && player.airPressAt && performance.now()-player.airPressAt<200) doGrab();
   player.airPressAt=0; } }
@@ -540,7 +662,13 @@ function doGrab(){
 }
 cv.addEventListener('pointerdown',e=>{e.preventDefault(); press(e.clientX,e.clientY);},{passive:false});
 cv.addEventListener('pointerup',e=>{e.preventDefault(); release();},{passive:false});
-cv.addEventListener('pointercancel',()=>release());
+cv.addEventListener('pointercancel',()=>{ pointer.moved=true; release(); });
+cv.addEventListener('pointermove',e=>{
+  if(!pointer.down || !SCROLL_STATES.has(state)) return;
+  const dy=e.clientY-pointer.sy; if(Math.abs(dy)>8) pointer.moved=true;
+  if(pointer.moved) listScroll=clamp(pointer.startScroll-dy, 0, listMax);
+});
+window.addEventListener('wheel',e=>{ if(SCROLL_STATES.has(state)) listScroll=clamp(listScroll+e.deltaY, 0, listMax); },{passive:true});
 window.addEventListener('keydown',e=>{
   if(e.repeat) return;
   if(e.code==='Space'||e.code==='ArrowDown'){ e.preventDefault(); if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); } else press(W/2,H/2); }
@@ -714,7 +842,7 @@ function updatePlay(dt){
   // ----- Missions-Tracking -----
   runStats.maxMult=Math.max(runStats.maxMult, player.mult);
   runStats.noWipeBest=Math.max(runStats.noWipeBest, player.dist-runStats.lastWipeDist);
-  if((missionTick++ & 31)===0) checkMissions();
+  if((missionTick++ & 31)===0){ checkMissions(); checkAchievements(true); }
 
   // ----- camera -----
   cam.x = player.x - W*camAnchor();
@@ -741,7 +869,7 @@ function updatePlay(dt){
   player.chaserX = player.x - player.waveGap;
   const gap = player.waveGap;
   if(gap < 46){ player.deathBy='wave'; Audio.sfx.crash(); cam.shake=20; spray(sx(player.x)+cam.x, player.y, -1, 30, '#ffffff'); gameOver(); }
-  else if(gap < 620 && !player._warned && !tut.active){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!'); }
+  else if(gap < 620 && !player._warned && !tut.active){ player._warned=true; banner('⚠ MONSTERWELLE','Bau Speed auf – lass dich nicht einholen!',true); }
   else if(gap > 760) player._warned=false;
 
   // ----- world spawns -----
@@ -756,11 +884,12 @@ function updatePlay(dt){
   for(let i=ents.length-1;i>=0;i--){ if(ents[i].x < player.x - W*0.6) ents.splice(i,1); }
 
   // trail
-  player.trail.push({x:player.x,y:player.y}); if(player.trail.length>14) player.trail.shift();
+  player.trail.push({x:player.x,y:player.y}); if(player.trail.length>(save.trail==='foam'?14:22)) player.trail.shift(); // besondere Trails etwas länger
 
   updateParts(dt);
   for(let i=floaters.length-1;i>=0;i--){ const f=floaters[i]; f.life-=dt; f.y-=40*dt; if(f.life<=0) floaters.splice(i,1); }
   if(bannerData.t>0) bannerData.t-=dt;
+  else if(bannerQueue.length) bannerData={t:2.4, ...bannerQueue.shift()};
   player.prevHold=player.holding; // fürs Erkennen des Loslassens (= Sprung)
 }
 function surfaceAngle(x){ return Math.atan(surfaceSlope(x)); }
@@ -874,10 +1003,10 @@ function collide(e,P){
       e.got=true; const g=15*(rainbowActive()?2:1); player.pearls+=g; runStats.shards++;
       floatText(sx(e.x),worldToScreenY(e.y),'🌠 +'+g,'#fff4c2',17); Audio.sfx.chime(); checkMissions(); break;
     }
-    case ENT.MAGNET: { e.got=true; player.magnet=8; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'MAGNET','#7fe8ff',16); Audio.sfx.power(); break; }
+    case ENT.MAGNET: { e.got=true; player.magnet=player.magnetMax=upVal('magnet'); runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'MAGNET','#7fe8ff',16); Audio.sfx.power(); break; }
     case ENT.SHIELD: { e.got=true; player.shield=true; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'SCHILD','#8affc8',16); Audio.sfx.power(); break; }
-    case ENT.TURBO:  { e.got=true; player.turbo=2.4; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'TURBO','#ffb03a',16); Audio.sfx.boost(); cam.shake=6; break; }
-    case ENT.STAR:   { e.got=true; player.star=6; runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'★ UNBESIEGBAR','#ffe36b',16); Audio.sfx.power(); break; }
+    case ENT.TURBO:  { e.got=true; player.turbo=player.turboMax=upVal('turbo'); runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'TURBO','#ffb03a',16); Audio.sfx.boost(); cam.shake=6; break; }
+    case ENT.STAR:   { e.got=true; player.star=player.starMax=upVal('star'); runStats.powerups++; floatText(sx(e.x),worldToScreenY(e.y),'★ UNBESIEGBAR','#ffe36b',16); Audio.sfx.power(); break; }
     case ENT.ROCK: case ENT.JELLY: case ENT.BUOY: {
       if(player.air) return; // in der Luft überspringst du Hindernisse
       hitHazard(e,P); break;
@@ -1405,12 +1534,35 @@ function powerIcon(X,Y,r,glyph,color){
 }
 
 //////////////////// Player draw ////////////////////
+// Spur hinter dem Board; pts in Bildschirm-Koordinaten (älteste zuerst) – auch für die Shop-Vorschau
+function drawTrailDots(kind, pts, P){
+  const t=perfNow(), A=ctx.globalAlpha; // A: Grund-Deckkraft (z. B. blass für gesperrte Trails im Shop)
+  const special = kind && kind!=='foam';
+  // Besondere Trails: Zwischenpunkte (bei Tempo liegen die Spurpunkte weit auseinander) und Kometenschweif –
+  // dick und hell am Board, dünn und blass am Ende. Gischt bleibt aufquellende Spritzer.
+  if(special){ const out=[]; for(let i=0;i<pts.length;i++){ if(i>0){ const p=pts[i-1], q=pts[i], k=Math.min(3,Math.floor(Math.hypot(q.x-p.x,q.y-p.y)/7));
+      for(let s=1;s<=k;s++) out.push({x:p.x+(q.x-p.x)*s/(k+1), y:p.y+(q.y-p.y)*s/(k+1)}); } out.push(pts[i]); } pts=out; }
+  const n=pts.length;
+  ctx.save();
+  for(let i=0;i<n;i++){ const X=pts[i].x, Y=pts[i].y, a=i/n, r=special ? 2.5+a*6 : (1-a)*8+2;
+    ctx.beginPath();
+    switch(kind){
+      case 'stars': { ctx.globalAlpha=A*a*0.95; ctx.fillStyle=i%2?'#fff3a8':'#ffffff'; const s=r*0.75*(0.7+0.3*Math.sin(t/90+i));
+        for(let k=0;k<8;k++){ const rr=k%2?s*0.35:s, an=k*Math.PI/4+t/400; ctx.lineTo(X+Math.cos(an)*rr, Y+Math.sin(an)*rr); } ctx.closePath(); ctx.fill(); break; }
+      case 'fire':    { ctx.globalAlpha=A*a*0.85; ctx.fillStyle=a>0.66?'#ffe36b':a>0.33?'#ff8a2b':'#e0352b'; ctx.arc(X,Y-(1-a)*6,r*1.1,0,TAU); ctx.fill(); break; }
+      case 'rainbow': { ctx.globalAlpha=A*a*0.85; ctx.fillStyle='hsl('+((i*28+t/8)%360)+',90%,62%)'; ctx.arc(X,Y,r,0,TAU); ctx.fill(); break; }
+      case 'biolum':  { ctx.globalCompositeOperation='screen'; ctx.globalAlpha=A*a*0.95; ctx.fillStyle='#59f0d6'; ctx.arc(X,Y,r*1.2,0,TAU); ctx.fill(); ctx.globalCompositeOperation='source-over'; break; }
+      case 'ink':     { ctx.globalAlpha=A*a*0.8; ctx.fillStyle=i%3?'#3a1d5a':'#7a3a9a'; ctx.arc(X,Y+(1-a)*4,r*1.15,0,TAU); ctx.fill(); break; }
+      case 'pearls':  { ctx.globalAlpha=A*a*0.95; ctx.fillStyle='rgba(255,255,255,.4)'; ctx.strokeStyle='#ffffff'; ctx.lineWidth=1.5; ctx.arc(X,Y,r*0.75,0,TAU); ctx.fill(); ctx.stroke(); break; }
+      case 'gold':    { ctx.globalAlpha=A*a*0.95; ctx.fillStyle=i%2?'#ffd36b':'#fff4c2'; ctx.arc(X,Y,r*0.85,0,TAU); ctx.fill(); break; }
+      default:        { ctx.globalAlpha=A*a*0.4; ctx.fillStyle=rgba(P.foam,0.6); ctx.arc(X,Y,r,0,TAU); ctx.fill(); }
+    }
+  }
+  ctx.restore();
+}
 function drawPlayer(P){
   const X=sx(player.x), Y=player.y-cam.y;
-  // trail spray
-  ctx.save(); ctx.globalAlpha=0.5;
-  for(let i=0;i<player.trail.length;i++){ const t=player.trail[i]; const a=i/player.trail.length; ctx.globalAlpha=a*0.4; ctx.fillStyle=rgba(P.foam,0.6); ctx.beginPath(); ctx.arc(sx(t.x),t.y-cam.y+6, (1-a)*8+2,0,TAU); ctx.fill(); }
-  ctx.restore();
+  drawTrailDots(save.trail, player.trail.map(t=>({x:sx(t.x), y:t.y-cam.y+6})), P);
 
   ctx.save();
   ctx.translate(X,Y);
@@ -1543,9 +1695,9 @@ function drawHUD(P){
   let py=80, px=W-20; ctx.textAlign='right'; ctx.font='600 13px system-ui';
   const powers=[];
   if(player.shield) powers.push(['🛡 Schild', 1]);
-  if(player.magnet>0) powers.push(['🧲 Magnet', player.magnet/8]);
-  if(player.turbo>0) powers.push(['⚡ Turbo', player.turbo/2.4]);
-  if(player.star>0) powers.push(['★ Unbesiegbar', player.star/6]);
+  if(player.magnet>0) powers.push(['🧲 Magnet', player.magnet/(player.magnetMax||8)]);
+  if(player.turbo>0) powers.push(['⚡ Turbo', player.turbo/(player.turboMax||2.4)]);
+  if(player.star>0) powers.push(['★ Unbesiegbar', player.star/(player.starMax||6)]);
   if(rainbowActive()) powers.push(['🌈 Perlen x2', sea.rainbowOn/7]);
   for(const [lbl,frac] of powers){ ctx.fillStyle='rgba(0,0,0,.3)'; roundRect(px-120,py,120,20,10); ctx.fill();
     ctx.fillStyle='#fff'; ctx.fillText(lbl,px-8,py+3);
@@ -1593,6 +1745,15 @@ function drawMenu(){
   ctx.font='600 15px system-ui'; ctx.fillStyle='rgba(255,255,255,.85)'; ctx.shadowBlur=4;
   ctx.fillText('Reite das lebendige Meer · jage den Highscore', W/2, H*0.20 + Math.min(80,W*0.14)+34);
   ctx.restore();
+  // Surfer-Rang
+  const li=levelInfo(save.xp), ry=H*0.20 + Math.min(80,W*0.14)+64, xbw=Math.min(200,W*0.55);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.font='800 15px system-ui'; ctx.fillStyle='#fff'; ctx.shadowColor='rgba(0,0,0,.35)'; ctx.shadowBlur=4;
+  ctx.fillText('Lv '+li.level+' · '+rankTitle(li.level), W/2, ry); ctx.shadowBlur=0;
+  roundRect(W/2-xbw/2, ry+8, xbw, 7, 3.5); ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fill();
+  roundRect(W/2-xbw/2, ry+8, Math.max(6,xbw*li.into/li.need), 7, 3.5); ctx.fillStyle='#ffe36b'; ctx.fill();
+  ctx.font='600 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fillText(fmtNum(li.into)+' / '+fmtNum(li.need)+' XP', W/2, ry+30);
+  ctx.restore();
   // buttons
   uiButtons=[];
   const bw=Math.min(260,W*0.7), bx=(W-bw)/2;
@@ -1600,21 +1761,48 @@ function drawMenu(){
   const dailyOpen = save.daily && !save.daily.done;
   btn('missions', bx, H*0.62+70, bw, 46, dailyOpen? '🎯 Missionen · ★ Daily!' : '🎯 Missionen', {c1:'#39d98a',c2:'#1b8a5a',fs:16});
   btn('shop', bx, H*0.62+126, bw*0.48, 44, '🛍  Shop', {c1:'#ffb84d',c2:'#e07a2b',fs:15});
-  btn('sound', bx+bw*0.52, H*0.62+126, bw*0.48, 44, save.soundOn?'🔊 Ton':'🔇 Ton', {c1:'#7a8aa0',c2:'#4a5a70',fs:15});
+  btn('ach', bx+bw*0.52, H*0.62+126, bw*0.48, 44, '🏆 Erfolge', {c1:'#b07aff',c2:'#7a4ad6',fs:15});
   if(!save.fullVersion) btn('full', W-150, 16, 134, 36, '🌙 Vollversion', {c1:'#7a5cff',c2:'#4a2fc0',fs:14});
   btn('tutorial', 16, 16, 134, 36, '❓ Surf-Schule', {c1:'#2f8fb0',c2:'#1d6a86',fs:14});
+  btn('sound', W-58, H-58, 44, 44, save.soundOn?'🔊':'🔇', {c1:'#7a8aa0',c2:'#4a5a70',fs:18});
   drawButtons();
   // stats footer
   ctx.save(); ctx.textAlign='center'; ctx.font='600 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.7)';
   ctx.fillText(`◐ ${save.pearls} Perlen   ·   Best ${save.best} m   ·   ${save.runs} Runs`, W/2, H*0.62+184);
   ctx.restore();
+  if(toast.t>0){ toast.t-=1/60; ctx.save(); ctx.globalAlpha=clamp(toast.t/0.4,0,1); ctx.font='800 14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const tw2=ctx.measureText(toast.text).width+32; roundRect((W-tw2)/2, H*0.62-52, tw2, 34, 17); ctx.fillStyle='rgba(57,217,138,.95)'; ctx.fill();
+    ctx.fillStyle='#08182a'; ctx.fillText(toast.text, W/2, H*0.62-35); ctx.restore(); }
+  // Tages-Serie: einmal pro Sitzung beim Öffnen des Menüs anbieten
+  if(!streakChecked){ streakChecked=true; if(streakOffer()) streakPopup=true; }
+  if(streakPopup) drawStreakPopup();
+}
+let streakPopup=false, streakChecked=false, toast={t:0,text:''};
+function drawStreakPopup(){
+  const day=streakOffer(); if(!day){ streakPopup=false; return; }
+  ctx.fillStyle='rgba(0,0,0,.62)'; ctx.fillRect(0,0,W,H);
+  const mw=Math.min(W-32,380), mh=250, mx=(W-mw)/2, my=(H-mh)/2;
+  ctx.save(); roundRect(mx,my,mw,mh,18); ctx.fillStyle='#14233a'; ctx.fill(); ctx.strokeStyle='rgba(255,211,107,.5)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.font='800 20px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('🎁 Tägliche Belohnung', W/2, my+38);
+  ctx.font='600 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.75)'; ctx.fillText('Tag '+day+' von 7 – jeden Tag wird es mehr!', W/2, my+60);
+  const gap=6, bw=(mw-32-gap*6)/7;
+  for(let i=0;i<7;i++){ const bx2=mx+16+i*(bw+gap), by2=my+78, cur=i===day-1, past=i<day-1;
+    roundRect(bx2,by2,bw,74,10); ctx.fillStyle=cur?'rgba(255,211,107,.9)':past?'rgba(57,217,138,.25)':'rgba(255,255,255,.08)'; ctx.fill();
+    ctx.fillStyle=cur?'#14233a':'#fff'; ctx.font='800 11px system-ui'; ctx.fillText('Tag '+(i+1), bx2+bw/2, by2+18);
+    ctx.font=(i===6?'20px':'16px')+' system-ui'; ctx.fillText(past?'✓':i===6?'🎁':'◐', bx2+bw/2, by2+44);
+    ctx.font='700 10px system-ui'; ctx.fillText(STREAK_REWARDS[i], bx2+bw/2, by2+64); }
+  ctx.restore();
+  uiButtons=[]; btn('claim', mx+16, my+mh-66, mw-32, 48, 'Abholen · +'+STREAK_REWARDS[day-1]+' ◐', {c1:'#ffd36b',c2:'#e0952b',fs:17}); drawButtons();
 }
 function menuClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
+  if(streakPopup){ if(id==='claim'){ const r=claimStreak(); streakPopup=false; Audio.sfx.chest(); toast={t:2.4,text:'+'+r+' ◐ abgeholt – bis morgen!'}; } return; }
   if(id==='play') startGame();
   else if(id==='missions'){ ensureDaily(); state='missions'; }
   else if(id==='full') openUnlock('menu');
   else if(id==='tutorial'){ save.tutorialDone=false; startGame(); }
-  else if(id==='shop'){ state='shop'; shopTab='boards'; }
+  else if(id==='shop'){ state='shop'; shopTab='boards'; listScroll=0; }
+  else if(id==='ach'){ state='achievements'; listScroll=0; }
   else if(id==='sound'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 }
 
@@ -1660,55 +1848,148 @@ function drawMissions(){
 function missionsClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button(); if(id==='back') state='menu'; }
 
 //////////////////// Screen: Shop ////////////////////
-let shopTab='boards', shopScroll=0;
+let shopTab='boards';
+const SHOP_TABS=[['boards','Boards'],['surfers','Surfer'],['trails','Trails'],['upgrades','Upgrades']];
+function shopCard(x,y,w,h,active){ roundRect(x,y,w,h,14); ctx.fillStyle=active?'rgba(47,208,255,.18)':'rgba(255,255,255,.06)'; ctx.fill(); ctx.strokeStyle=active?'rgba(47,208,255,.7)':'rgba(255,255,255,.12)'; ctx.lineWidth=1.5; ctx.stroke(); }
 function drawShop(){
-  const P=pal(save.best*PXPM*0.0 + 0); drawBackground(pal(0),0);
+  drawBackground(pal(0),0);
   ctx.fillStyle='rgba(4,18,31,.55)'; ctx.fillRect(0,0,W,H);
-  ctx.save(); ctx.textAlign='center'; ctx.font='900 30px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('SHOP',W/2,24);
-  ctx.font='700 16px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('◐ '+save.pearls+' Perlen', W/2, 60); ctx.restore();
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font='900 30px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('SHOP',W/2,42);
+  ctx.font='700 16px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('◐ '+save.pearls+' Perlen', W/2, 68); ctx.restore();
+  const cw=Math.min(W-32,420), cx=(W-cw)/2, tg=6, tw=(cw-tg*3)/4;
   uiButtons=[];
-  const tw=Math.min(160,W*0.42);
-  btn('tab_boards', W/2-tw-6, 92, tw, 40, 'Boards', {c1: shopTab==='boards'?'#2fd0ff':'#3a4a5a', c2: shopTab==='boards'?'#1b7fd6':'#2a3a4a', fs:15});
-  btn('tab_surfers', W/2+6, 92, tw, 40, 'Surfer', {c1: shopTab==='surfers'?'#2fd0ff':'#3a4a5a', c2: shopTab==='surfers'?'#1b7fd6':'#2a3a4a', fs:15});
-  // list
-  const items = shopTab==='boards'? Object.entries(BOARDS) : Object.entries(SURFERS);
-  const owned = shopTab==='boards'? save.ownedBoards : save.ownedSurfers;
-  const equipped = shopTab==='boards'? save.board : save.surfer;
-  const cardW=Math.min(W-40,420), cardX=(W-cardW)/2; let cy=150;
-  const cardH=76;
-  for(const [key,it] of items){
-    const isOwned=owned.includes(key), isEq=equipped===key;
-    // card bg
-    ctx.save(); roundRect(cardX,cy,cardW,cardH-8,14);
-    ctx.fillStyle= isEq?'rgba(47,208,255,.18)':'rgba(255,255,255,.06)'; ctx.fill();
-    ctx.strokeStyle= isEq?'rgba(47,208,255,.7)':'rgba(255,255,255,.12)'; ctx.lineWidth=1.5; ctx.stroke();
-    // preview swatch
-    if(shopTab==='boards'){ const bg=ctx.createLinearGradient(cardX+16,0,cardX+64,0); bg.addColorStop(0,it.c1); bg.addColorStop(1,it.c2);
-      ctx.fillStyle=bg; ctx.beginPath(); ctx.ellipse(cardX+40,cy+34,26,8,0,0,TAU); ctx.fill(); }
-    else { ctx.fillStyle=it.suit; roundRect(cardX+30,cy+18,20,20,8); ctx.fill(); ctx.fillStyle=it.skin; ctx.beginPath(); ctx.arc(cardX+40,cy+16,9,0,TAU); ctx.fill(); }
-    ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='700 17px system-ui'; ctx.fillText(it.name, cardX+82, cy+18);
-    ctx.font='500 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.65)'; ctx.fillText((it.blurb||it.perk||''), cardX+82, cy+40);
-    ctx.restore();
-    // action button
-    const abw=96, abx=cardX+cardW-abw-14, aby=cy+18, abh=34;
-    if(isEq){ btn('eq_'+key, abx,aby,abw,abh,'AKTIV',{c1:'#39d98a',c2:'#1b8a5a',fs:14,disabled:true}); }
-    else if(isOwned){ btn('use_'+key, abx,aby,abw,abh,'Nutzen',{c1:'#2fd0ff',c2:'#1b7fd6',fs:14}); }
-    else if(it.premium){ btn('prem_'+key, abx,aby,abw,abh,'🌙 Voll',{c1:'#7a5cff',c2:'#4a2fc0',fs:14}); }
-    else { const afford=save.pearls>=it.price; btn('buy_'+key, abx,aby,abw,abh,'◐ '+it.price,{c1:afford?'#ffb84d':'#5a5a5a',c2:afford?'#e07a2b':'#3a3a3a',fs:14,disabled:!afford}); }
-    cy+=cardH;
+  SHOP_TABS.forEach(([k,l],i)=>btn('tab_'+k, cx+i*(tw+tg), 82, tw, 36, l, {c1:shopTab===k?'#2fd0ff':'#3a4a5a', c2:shopTab===k?'#1b7fd6':'#2a3a4a', fs:13}));
+  drawButtons(); const tabBtns=uiButtons;
+
+  const top=128, bottom=H-74;
+  ctx.save(); ctx.beginPath(); ctx.rect(0,top,W,bottom-top); ctx.clip();
+  uiButtons=[];
+  let y=top+4-listScroll;
+  const vis=(yy,hh)=>yy>=top-2 && yy+hh<=bottom+2; // nur sichtbare Knöpfe sind klickbar
+  if(shopTab==='boards'||shopTab==='surfers'){
+    const items=Object.entries(shopTab==='boards'?BOARDS:SURFERS), owned=shopTab==='boards'?save.ownedBoards:save.ownedSurfers, eq=shopTab==='boards'?save.board:save.surfer;
+    for(const [key,it] of items){
+      const isOwned=owned.includes(key), isEq=eq===key;
+      ctx.save(); shopCard(cx,y,cw,68,isEq);
+      if(shopTab==='boards'){ const bg=ctx.createLinearGradient(cx+16,0,cx+64,0); bg.addColorStop(0,it.c1); bg.addColorStop(1,it.c2); ctx.fillStyle=bg; ctx.beginPath(); ctx.ellipse(cx+40,y+34,26,8,0,0,TAU); ctx.fill(); }
+      else { ctx.fillStyle=it.suit; roundRect(cx+30,y+26,20,20,8); ctx.fill(); ctx.fillStyle=it.skin; ctx.beginPath(); ctx.arc(cx+40,y+22,9,0,TAU); ctx.fill(); }
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillStyle='#fff'; ctx.font='700 16px system-ui'; ctx.fillText(it.name, cx+80, y+30);
+      ctx.font='500 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.65)'; ctx.fillText(it.blurb||it.perk||'', cx+80, y+50);
+      ctx.restore();
+      const bw=92, bx=cx+cw-bw-12, by=y+17;
+      if(vis(by,34)){
+        if(isEq) btn('eq_'+key,bx,by,bw,34,'AKTIV',{c1:'#39d98a',c2:'#1b8a5a',fs:13,disabled:true});
+        else if(isOwned) btn('use_'+key,bx,by,bw,34,'Nutzen',{c1:'#2fd0ff',c2:'#1b7fd6',fs:13});
+        else if(it.premium) btn('prem_'+key,bx,by,bw,34,'🌙 Voll',{c1:'#7a5cff',c2:'#4a2fc0',fs:13});
+        else { const ok=save.pearls>=it.price; btn('buy_'+key,bx,by,bw,34,'◐ '+it.price,{c1:ok?'#ffb84d':'#5a5a5a',c2:ok?'#e07a2b':'#3a3a3a',fs:13,disabled:!ok}); }
+      }
+      y+=76;
+    }
+  } else if(shopTab==='trails'){
+    const P0=pal(0);
+    for(const [key,tr] of Object.entries(TRAILS)){
+      const isOwned=save.ownedTrails.includes(key), isEq=save.trail===key;
+      ctx.save(); shopCard(cx,y,cw,68,isEq);
+      const pts=[]; for(let i=0;i<16;i++) pts.push({x:cx+12+i*3.8, y:y+36+Math.sin(i/3+perfNow()/300)*4}); // Vorschau der Spur
+      ctx.globalAlpha=isOwned?1:0.35; drawTrailDots(key, pts, P0); ctx.globalAlpha=1;
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillStyle='#fff'; ctx.font='700 16px system-ui'; ctx.fillText(tr.name, cx+80, y+30);
+      ctx.font='500 12px system-ui'; ctx.fillStyle=isOwned?'rgba(255,255,255,.65)':'#ffcf7a'; ctx.fillText(isOwned?'Freigeschaltet':'🔒 '+tr.how, cx+80, y+50);
+      ctx.restore();
+      const bw=92, bx=cx+cw-bw-12, by=y+17;
+      if(vis(by,34)){
+        if(isEq) btn('teq_'+key,bx,by,bw,34,'AKTIV',{c1:'#39d98a',c2:'#1b8a5a',fs:13,disabled:true});
+        else if(isOwned) btn('tuse_'+key,bx,by,bw,34,'Nutzen',{c1:'#2fd0ff',c2:'#1b7fd6',fs:13});
+        else btn('tlock_'+key,bx,by,bw,34,'🔒',{c1:'#3a4a5a',c2:'#2a3a4a',fs:14,disabled:true});
+      }
+      y+=76;
+    }
+  } else {
+    for(const [key,u] of Object.entries(UPGRADES)){
+      const lv=upLv(key), max=lv>=UPG_COST.length;
+      ctx.save(); shopCard(cx,y,cw,84,false);
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.font='26px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(u.icon, cx+14, y+44);
+      ctx.font='700 16px system-ui'; ctx.fillText(u.name, cx+54, y+28);
+      ctx.font='500 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.72)';
+      ctx.fillText(u.what+': '+upVal(key)+u.unit+(max?'  (Max)':'  →  '+upVal(key,lv+1)+u.unit), cx+54, y+48);
+      for(let i=0;i<UPG_COST.length;i++){ roundRect(cx+54+i*20, y+60, 15, 8, 4); ctx.fillStyle=i<lv?'#ffe36b':'rgba(255,255,255,.18)'; ctx.fill(); }
+      ctx.restore();
+      const bw=92, bx=cx+cw-bw-12, by=y+25;
+      if(vis(by,34)){
+        if(max) btn('umax_'+key,bx,by,bw,34,'MAX',{c1:'#39d98a',c2:'#1b8a5a',fs:13,disabled:true});
+        else { const c=UPG_COST[lv], ok=save.pearls>=c; btn('up_'+key,bx,by,bw,34,'◐ '+c,{c1:ok?'#ffb84d':'#5a5a5a',c2:ok?'#e07a2b':'#3a3a3a',fs:13,disabled:!ok}); }
+      }
+      y+=92;
+    }
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font='500 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.55)';
+    ctx.fillText('Upgrades gibt es nur für Perlen – nie für echtes Geld.', W/2, y+14); ctx.restore(); y+=30;
   }
-  btn('back', (W-Math.min(260,W*0.7))/2, Math.min(cy+8,H-70), Math.min(260,W*0.7), 48, '‹ Zurück', {c1:'#7a8aa0',c2:'#4a5a70',fs:16});
-  drawButtons();
+  listMax=Math.max(0, (y+listScroll)-(top+4)-(bottom-top)+8);
+  if(listScroll>listMax) listScroll=listMax;
+  drawButtons(); const listBtns=uiButtons;
+  ctx.restore();
+  drawScrollBar(top,bottom);
+  const bw2=Math.min(260,W*0.7);
+  uiButtons=[]; btn('back',(W-bw2)/2,H-62,bw2,48,'‹ Zurück',{c1:'#7a8aa0',c2:'#4a5a70',fs:16}); drawButtons();
+  uiButtons=[...tabBtns, ...listBtns, ...uiButtons];
+}
+function drawScrollBar(top,bottom){
+  if(listMax<=0) return;
+  const vh=bottom-top, th=Math.max(30, vh*vh/(vh+listMax)), ty=top+(vh-th)*(listScroll/listMax);
+  ctx.save(); ctx.fillStyle='rgba(255,255,255,.28)'; roundRect(W-7, ty, 4, th, 2); ctx.fill(); ctx.restore();
 }
 function shopClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
-  if(id==='tab_boards') shopTab='boards';
-  else if(id==='tab_surfers') shopTab='surfers';
+  if(id.startsWith('tab_')){ shopTab=id.slice(4); listScroll=0; }
   else if(id==='back') state='menu';
   else if(id.startsWith('prem_')) openUnlock('shop');
+  else if(id.startsWith('tuse_')){ save.trail=id.slice(5); persist(); }
+  else if(id.startsWith('up_')){ if(buyUpgrade(id.slice(3))) Audio.sfx.power(); }
   else if(id.startsWith('use_')){ const k=id.slice(4); if(shopTab==='boards') save.board=k; else save.surfer=k; persist(); }
   else if(id.startsWith('buy_')){ const k=id.slice(4); const it=(shopTab==='boards'?BOARDS:SURFERS)[k];
     if(save.pearls>=it.price){ save.pearls-=it.price; if(shopTab==='boards'){save.ownedBoards.push(k); save.board=k;} else {save.ownedSurfers.push(k); save.surfer=k;} Audio.sfx.power(); persist(); } }
 }
+
+//////////////////// Screen: Erfolge ////////////////////
+function fmtNum(v){ return Math.floor(v).toLocaleString('de-DE'); }
+function drawAchievements(){
+  drawBackground(pal(0),0);
+  ctx.fillStyle='rgba(4,18,31,.6)'; ctx.fillRect(0,0,W,H);
+  const total=ACH.length*3;
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.font='900 30px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('ERFOLGE',W/2,42);
+  ctx.font='700 15px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('🏆 '+achCount()+' / '+total+' Medaillen', W/2, 68); ctx.restore();
+  const cw=Math.min(W-32,420), cx=(W-cw)/2, top=84, bottom=H-74, rh=78;
+  ctx.save(); ctx.beginPath(); ctx.rect(0,top,W,bottom-top); ctx.clip();
+  let y=top+6-listScroll;
+  for(const a of ACH){
+    const tier=save.ach[a.id]||0, locked=a.full && !save.fullVersion;
+    ctx.save(); shopCard(cx,y,cw,rh-8,tier>=3);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    ctx.font='24px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(a.icon, cx+12, y+36);
+    ctx.font='700 15px system-ui'; ctx.fillText(a.name, cx+48, y+24);
+    ctx.textAlign='right'; ctx.font='17px system-ui';
+    for(let i=0;i<3;i++){ ctx.globalAlpha=i<tier?1:0.22; ctx.fillText(TIER_MEDALS[i], cx+cw-12-(2-i)*22, y+26); }
+    ctx.globalAlpha=1; ctx.textAlign='left'; ctx.font='500 12px system-ui';
+    if(locked){ ctx.fillStyle='#c9b8ff'; ctx.fillText('🌙 Nur in der Vollversion (Nacht-Welten)', cx+48, y+48); }
+    else if(tier>=3){ ctx.fillStyle='#39e88a'; ctx.fillText('✓ Alle Medaillen'+(a.gold?' · Trail „'+TRAILS[a.gold].name+'" freigeschaltet':''), cx+48, y+48); }
+    else {
+      const v=achValue(a,false), goal=a.tiers[tier], pre=a.pre||'';
+      const shown = a.scope==='run' ? 'Bestwert '+pre+(a.pre?(Math.floor(v*10)/10):fmtNum(v)) : (a.div? (Math.floor(v*10)/10).toLocaleString('de-DE') : fmtNum(v));
+      ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText(shown+' / '+pre+fmtNum(goal)+(a.unit?' '+a.unit:''), cx+48, y+46);
+      const bw=cw-48-14; roundRect(cx+48, y+52, bw, 6, 3); ctx.fillStyle='rgba(255,255,255,.15)'; ctx.fill();
+      roundRect(cx+48, y+52, Math.max(4, bw*clamp(v/goal,0,1)), 6, 3); ctx.fillStyle='#2fd0ff'; ctx.fill();
+      ctx.font='600 11px system-ui'; ctx.fillStyle='#ffd36b';
+      ctx.fillText(TIER_MEDALS[tier]+' '+TIER_NAMES[tier]+': +'+TIER_PEARLS[tier]+' ◐'+(tier===2&&a.gold?' + Trail „'+TRAILS[a.gold].name+'"':''), cx+48, y+72-4);
+    }
+    ctx.restore();
+    y+=rh;
+  }
+  listMax=Math.max(0, (y+listScroll)-(top+6)-(bottom-top)+8);
+  if(listScroll>listMax) listScroll=listMax;
+  ctx.restore();
+  drawScrollBar(top,bottom);
+  const bw2=Math.min(260,W*0.7);
+  uiButtons=[]; btn('back',(W-bw2)/2,H-62,bw2,48,'‹ Zurück',{c1:'#7a8aa0',c2:'#4a5a70',fs:16}); drawButtons();
+}
+function achClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button(); if(id==='back') state='menu'; }
 
 //////////////////// Surf-Schule (Tutorial) ////////////////////
 // Jeder Schritt wartet, bis der Spieler ihn wirklich geschafft hat. Währenddessen: keine Haie/Bosse/Events,
@@ -2017,6 +2298,15 @@ function drawOver(){
   const overTitle = player.newBest? '🏁 NEUER REKORD!' : (player.deathBy==='shark'? '🦈 GEFRESSEN!' : '🌊 EINGEHOLT!');
   ctx.font='900 28px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(overTitle, cx, y);
   y+=48; ctx.font='800 44px system-ui'; ctx.fillStyle=player.newBest?'#ffe36b':'#7fe8ff'; ctx.fillText(Math.floor(player.dist)+' m', cx, y);
+  if(rp && rp.xp){ // Surfer-Rang: Fortschritt dieses Laufs
+    const li=levelInfo(save.xp), xbw=Math.min(220,cw*0.7);
+    y+=26; ctx.font='700 13px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('Lv '+li.level+' · '+rankTitle(li.level)+'   +'+fmtNum(rp.xp.xp)+' XP', cx, y);
+    y+=8; roundRect(cx-xbw/2,y,xbw,6,3); ctx.fillStyle='rgba(255,255,255,.15)'; ctx.fill();
+    roundRect(cx-xbw/2,y,Math.max(6,xbw*li.into/li.need),6,3); ctx.fillStyle='#ffe36b'; ctx.fill(); y+=6;
+    if(rp.xp.after>rp.xp.before){ y+=20; ctx.font='800 14px system-ui'; ctx.fillStyle='#39e88a';
+      y=wrapText('⬆ LEVEL '+rp.xp.after+'!  +'+rp.xp.pearls+' ◐'+(rp.xp.trails.length?' · Neuer Trail: '+rp.xp.trails.map(k=>TRAILS[k].name).join(', '):''), cx, y, cw, 18); }
+  }
+  if(runStats.achNew.length){ y+=20; ctx.font='600 12px system-ui'; ctx.fillStyle='#d6c4ff'; y=wrapText('🏆 Neu: '+runStats.achNew.join(', '), cx, y, cw, 16); }
   if(rp && rp.cause){ y+=26; ctx.font='500 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.82)'; y=wrapText(rp.cause, cx, y, cw, 17); }
   if(rp){
     // Dieser Run vs. Rekord – 🏆 markiert neue Bestwerte
@@ -2039,7 +2329,7 @@ function drawOver(){
       y+=22; ctx.textAlign='left'; ctx.font='700 12px system-ui'; ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText('Deine letzten Runs', x0, y);
       if(h.length>=6){ const avg=a=>a.reduce((s,v)=>s+v,0)/a.length, a=avg(h.slice(-3)), b=avg(h.slice(-6,-3)), pct=Math.round((a-b)/Math.max(1,b)*100);
         ctx.textAlign='right'; ctx.fillStyle=pct>=0?'#39e88a':'#ffb03a'; ctx.fillText((pct>=0?'▲ +':'▼ ')+pct+'% (Ø letzte 3)', x0+cw, y); }
-      y+=8; const ch=50, n=h.length, gap=6, bw=(cw-(n-1)*gap)/n, mx=Math.max(...h,1);
+      y+=8; const ch=H<760?32:44, n=h.length, gap=6, bw=(cw-(n-1)*gap)/n, mx=Math.max(...h,1);
       h.forEach((d,i)=>{ const bh=Math.max(3,ch*d/mx); roundRect(x0+i*(bw+gap), y+ch-bh, bw, bh, 3); ctx.fillStyle=i===n-1?'#7fe8ff':'rgba(255,255,255,.26)'; ctx.fill(); });
       y+=ch;
     }
@@ -2117,6 +2407,7 @@ function frame(t){
   if(state==='play'){ frozenSnap=null; updatePlay(dt*tScale); drawScene(); }
   else if(state==='menu') drawMenu();
   else if(state==='missions') drawMissions();
+  else if(state==='achievements') drawAchievements();
   else if(state==='shop') drawShop();
   else if(state==='pause') drawPause();
   else if(state==='over') drawOver();

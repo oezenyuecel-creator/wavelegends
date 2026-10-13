@@ -12,6 +12,15 @@ Der Spieler ist ein Surfer, der ein **lebendiges Meer** abreitet. Das Meer ist d
 verändert Wellenhöhe, Licht, Wetter und Tageszeit. Keine Runde fühlt sich gleich an. Leicht zu lernen,
 schwer zu meistern — die klassische „nur-noch-ein-Run"-Schleife.
 
+## Langzeit-Motivation
+Ein Tester hatte nach ~26 Läufen (~19 min) alles gekauft. Deshalb gibt es jetzt:
+- **Surfer-Rang**: Jeder Lauf gibt XP (Distanz, Tricks, Flips, Kraken, Events, Missionen) → Level mit Titeln (Anfänger → Wasserratte → … → Wave Legend bei Lv 50, danach endlos weiter). Jeder Aufstieg: Perlen; Lv 10/25/40: exklusive Trails.
+- **Erfolge** 🏆: 12 Disziplinen × Bronze/Silber/Gold (36 Medaillen), z. B. Flip-Meister, Kraken-Jäger, Hai-Flüsterer, Dauersurfer. Belohnung: 100/300/750 Perlen; Gold-Stufen schalten Trails frei, die man nicht kaufen kann. Neue Erfolge erscheinen sofort im Lauf (Banner-Warteschlange) und in der Auswertung.
+- **Trails**: 8 Spuren hinter dem Board (Gischt, Sternenstaub, Feuer, Regenbogen, Leuchtspur, Kraken-Tinte, Perlenkette, Goldspur) – nur erspielbar.
+- **Power-Up-Upgrades**: Magnet/Turbo/Stern länger, Schild öfter schon beim Start – je 5 Stufen (500 → 8.000 Perlen), nur für Perlen, nie für Echtgeld.
+- **Tägliche Belohnung**: 7-Tage-Serie (100 → 1.000 Perlen), verpasster Tag = von vorn.
+- Bestehende Spielstände bekommen Start-XP fürs bisherige Spielen, schon erreichte Rekorde zählen sofort als Erfolge. Shop und Erfolge sind scrollbar (Knöpfe lösen erst beim Loslassen ohne Wischen aus).
+
 ## Surf-Schule (Tutorial)
 Beim ersten Start führt eine Mitmach-Schule in 5 Schritten durch das Spiel — jeder Schritt wartet, bis man ihn
 geschafft hat: ① Halten = Speed (⚡-Balken leuchtet) · ② Loslassen = Springen · ③ echter Fels mit ⚠-Warnung
