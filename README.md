@@ -25,8 +25,13 @@ Ein Tester hatte nach ~26 Läufen (~19 min) alles gekauft. Deshalb gibt es jetzt
 ## Bonus-Level (eigener Modus, Hauptspiel unverändert)
 Über „🧜 Bonus" im Menü. **Tickets**: täglich 1× gratis, +1 für jeden Lauf, in dem der Kraken besiegt wird (max. 5).
 - **🧜 Meerjungfrauen-Lagune** (spielbar): Unterwasser-Höhlen mit Lichtstrahlen und Leuchtpflanzen. Eine Meerjungfrau schwimmt voraus, ihre Perlenspur ist der Weg. Steuerung: HALTEN = abtauchen, LOSLASSEN = aufsteigen. **Kein Game Over**: Luft (40 s, Luftblasen +2,5 s) läuft ab, Quallen kosten nur Perlen. Perlen zählen doppelt, dazu ein Kristall (mit 💎-Vorankündigung am Rand) und eine **goldene Muschel** – die Meerjungfrau taucht zu ihr hinab. 5 Muscheln = exklusives **Schuppen-Board**.
-- 🦈 Hai-Jagd und 🐙 Leviathan-Ritt: angekündigt („bald").
-Fairness auf Handy-Breite gemessen (Bot mit 0,3 s Reaktion): Muschel 16/16, Kristall 12/16.
+- **🦈 Hai-Jagd**: Korallenschlucht im Sonnenuntergang, ein Riesenhai jagt dich 35 s lang. Er wechselt Takt und Richtung (schnappt von hinten, doppelt, oder taucht ab und kommt von vorn), aber jeder Angriff wird gleich angekündigt: Ein **Ring um den Surfer** füllt sich – wird er **grün**, tippen = springen (◀/▶ zeigt die Richtung, von vorn zusätzlich 🦈 am Rand). Perlenbögen liegen genau auf der idealen Sprungbahn, „PERFEKT!" gibt +5. **Kein Game Over**: ein Biss kostet 15 Perlen, nach 3 Bissen endet die Flucht früher, die Beute bleibt. Durchhalten = Jackpot (+60) und ein **Haizahn** 🦷 → 5 Haizähne = exklusives **Haizahn-Board**.
+- **🐉 Leviathan-Ritt**: Nachts im Sturm (Regen, Blitze) surfst du auf dem Rücken eines Seeungeheuers. Steuerung wie im Hauptspiel: **HALTEN = Schwung holen, LOSLASSEN = springen** – zwischen den Buckeln liegt Wasser, das bremst (reinfallen kostet ⅓ Tempo, kurze Gnadenfrist am Rand). Landung auf dem Abhang = „Sauber!" (+Tempo). Ab und zu schüttelt er sich und Schätze schweben herab. **Finale**: Er hebt den Kopf und schleudert dich hoch – mit genug **Schwung** (Marke 💎 in der Anzeige) fliegst du durch den Kristallring (💎 +1, ◐ +40). Jeder Ritt bringt eine **Sturmperle** ⚡ → 5 = exklusive **Sturmblitz-Spur**.
+Fairness auf Handy-Breite (375 px) mit Bots gemessen:
+- Lagune: Muschel 16/16, Kristall 12/16 (0,3 s Reaktion).
+- Hai-Jagd: Wer auf „Ring wird grün" mit 0,22–0,38 s reagiert, übersteht 30/30 Fluchten, mit 0,45 s noch 27/30; Nicht-Tippen oder Wild-Tippen endet nach ~10–15 s. Gute Spieler ~340–355 Perlen, langsame ~195.
+- Leviathan: Loslassen irgendwo zwischen 0,7 s vor dem Wasser und dem Wasserrand trifft den Ring in 7–8 von 8 Ritten; Dauer-Halten oder Nichtstun schafft den Ring nie. Perlen je nach Präzision ~195–390.
+Die exklusiven Teile sind reine Optik; das Hauptspiel (Physik, Spawns, Balance, HUD) ist unverändert.
 
 ## Surf-Schule (Tutorial)
 Beim ersten Start führt eine Mitmach-Schule in 5 Schritten durch das Spiel — jeder Schritt wartet, bis man ihn
