@@ -22,6 +22,12 @@ Ein Tester hatte nach ~26 Läufen (~19 min) alles gekauft. Deshalb gibt es jetzt
 - **Sammel-Kollektion mit Effekten** 💎: 6 Boards (Prisma, Frost, Blitz, Königs-Board, Phönix mit Flammen, Galaxie) und 6 Surfer (Jack der Pirat, Shadow der Ninja, Robo, Merlin der Zauberer, Blaze mit Heldenumhang, Coral mit Krone & Aura) in den Stufen Selten/Episch/Legendär. Seltene für Perlen, Epische (💎 20–25) und Legendäre (💎 50–60) nur für **Kristalle** — selten hoch in der Luft (guter Sprung nötig), +1 pro Kraken, +2/+5 für Silber/Gold-Erfolge, +3 alle 5 Level, +5 an Tag 7. Alles reine Optik (Werte wie das Holzboard). Shop mit Live-Vorschau, Seltenheits-Leiste und Sammlungs-Zähler; dein aktueller Surfer steht als Schaustück im Menü.
 - Bestehende Spielstände bekommen Start-XP fürs bisherige Spielen, schon erreichte Rekorde zählen sofort als Erfolge. Shop und Erfolge sind scrollbar (Knöpfe lösen erst beim Loslassen ohne Wischen aus).
 
+## Bonus-Level (eigener Modus, Hauptspiel unverändert)
+Über „🧜 Bonus" im Menü. **Tickets**: täglich 1× gratis, +1 für jeden Lauf, in dem der Kraken besiegt wird (max. 5).
+- **🧜 Meerjungfrauen-Lagune** (spielbar): Unterwasser-Höhlen mit Lichtstrahlen und Leuchtpflanzen. Eine Meerjungfrau schwimmt voraus, ihre Perlenspur ist der Weg. Steuerung: HALTEN = abtauchen, LOSLASSEN = aufsteigen. **Kein Game Over**: Luft (40 s, Luftblasen +2,5 s) läuft ab, Quallen kosten nur Perlen. Perlen zählen doppelt, dazu ein Kristall (mit 💎-Vorankündigung am Rand) und eine **goldene Muschel** – die Meerjungfrau taucht zu ihr hinab. 5 Muscheln = exklusives **Schuppen-Board**.
+- 🦈 Hai-Jagd und 🐙 Leviathan-Ritt: angekündigt („bald").
+Fairness auf Handy-Breite gemessen (Bot mit 0,3 s Reaktion): Muschel 16/16, Kristall 12/16.
+
 ## Surf-Schule (Tutorial)
 Beim ersten Start führt eine Mitmach-Schule in 5 Schritten durch das Spiel — jeder Schritt wartet, bis man ihn
 geschafft hat: ① Halten = Speed (⚡-Balken leuchtet) · ② Loslassen = Springen · ③ echter Fels mit ⚠-Warnung
