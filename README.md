@@ -70,6 +70,7 @@ Ergebnis (Bot mit 0,3 s Reaktionszeit, 14 Läufe): Median 6.256 m statt 3.479 m 
 - **In der Luft HALTEN** = **Flip/Rotation** (Trickpunkte) → rechtzeitig loslassen, um sauber & gerade zu landen
 - **In der Luft kurz TIPPEN** = **Grab** (Style-Punkte ohne Rotationsrisiko)
 - **Sauber landen** = Combo läuft weiter + kleiner Speed-Boost. Schief landen = **Wipeout** (Combo weg, Speed bricht ein)
+- **⏸ oben rechts** = Pause (dort „Menü" beendet den Lauf und wertet ihn). Geht die App in den Hintergrund, pausiert das Spiel automatisch.
 - Desktop-Test: `Leertaste` / `Pfeil-runter` = Halten, `P` = Pause, `M` = Ton
 
 ## Der Clou: die Monsterwelle 🌊
@@ -78,6 +79,10 @@ wie ein Lebensbalken (🌊-Anzeige oben links): sauber surfen schiebt sie zurüc
 jeder **Wipeout** lässt sie um einen festen Betrag heranrollen. **1 Fehler = spürbar, 2 kurz nacheinander =
 Gefahr, 3 in Folge = gefressen.** Immer gleich, unabhängig von Glück mit der Wellenform. Auf schmalen
 Handys kündigt Gischt am linken Rand sie an, bevor sie ins Bild rollt.
+
+**Kein Endlos-Lauf:** Das Tempo steigt nur bis 6000 m (vorher wuchs es endlos – ein Experte flog nach 10 min mit 67.000 px/s
+über 1,5 Mio. m). Ab 8000 m wird die Welle langsam stärker (Banner „Die Welle wird stärker"), so endet auch ein perfekter
+Lauf – im Bot-Test nach 14.000–24.000 m.
 
 **Ausnahme: der Hai. 🦈** Er ist selten, kündigt sich mit pulsierender roter Warn-Aura an — und frisst
 dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen den Hai).

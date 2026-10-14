@@ -686,6 +686,7 @@ function press(x,y){
   if(SCROLL_STATES.has(state)) return;
   if(state==='over'){ overClick(x,y); return; }
   if(state==='play'){
+    if(x>W-64 && y<72){ pauseGame(); return; }                                   // ⏸-Knopf oben rechts (kein Sprung)
     if(tut.active && hitButton(x,y)==='tut_skip'){ endTutorial(true); return; } // kein Sprung beim Überspringen
     player.holding=true; if(player.air) player.airPressAt=performance.now(); }
   if(state==='pause'){ /* handled via button */ pauseClick(x,y); }
@@ -716,7 +717,7 @@ window.addEventListener('keydown',e=>{
   if(e.repeat) return;
   if(e.code==='Space'||e.code==='ArrowDown'){ e.preventDefault(); if(state==='play'){ player.holding=true; if(player.air) player.airPressAt=performance.now(); } else press(W/2,H/2); }
   if(e.code==='Enter'){ if(state==='menu') startGame(); else if(state==='over') startGame(); }
-  if(e.code==='KeyP'&&state==='play'){ state='pause'; }
+  if(e.code==='KeyP'&&state==='play'){ pauseGame(); }
   else if(e.code==='KeyP'&&state==='pause'){ state='play'; }
   if(e.code==='KeyM'){ save.soundOn=!save.soundOn; Audio.setMuted(!save.soundOn); persist(); }
 });
@@ -765,8 +766,11 @@ function updatePlay(dt){
   if(bi!==lastChordIdx){ lastChordIdx=bi; Audio.setChord(CHORDS[bi]); }
 
   const B=player.B;
-  const globalSpeed = 1 + player.dist/6000*0.6; // gentle speed ramp
-  const maxV = (1180 + player.dist/12) * B.accel;
+  // Tempo-Rampe endet bei 6000 m: vorher wuchs sie endlos (Bot: 67.000 px/s nach 10 min, Lauf ohne Ende).
+  // Unter 6000 m ist alles exakt wie bisher.
+  const rampD = Math.min(player.dist, 6000);
+  const globalSpeed = 1 + rampD/6000*0.6; // gentle speed ramp
+  const maxV = (1180 + rampD/12) * B.accel;
   const minV = 360*globalSpeed;
 
   // turbo
@@ -901,7 +905,10 @@ function updatePlay(dt){
   // => 1 Fehler spürbar, 2 kurz nacheinander gefährlich, 3 in Folge = gefressen.
   const floorV = 400 + Math.min(player.dist*0.05, 250);
   const wipePenalty = 450 + Math.min(player.dist*0.02, 100);
-  const regen = 40 + player.vx*0.04 - Math.min(player.dist*0.005, 20);
+  // Ab 8000 m wird die Welle langsam stärker, damit auch perfekte Läufe enden (vorher: nach ~20.000 m unbesiegbar)
+  const late = Math.max(0, player.dist-8000)*0.012;
+  if(late>0 && !player._lateWarn && !tut.active){ player._lateWarn=true; banner('🌊 DIE WELLE WIRD STÄRKER','Ab jetzt holt sie langsam auf – Turbo hilft!',true); }
+  const regen = 40 + player.vx*0.04 - Math.min(player.dist*0.005, 20) - late;
   player.sinceWipe = player.wipe>0 ? 0 : player.sinceWipe+dt;
   let gapRate;
   if(player.wipe>0) gapRate = -wipePenalty/0.75;               // Strafe über die Wipeout-Dauer verteilt (sichtbares Heranrollen)
@@ -1856,8 +1863,10 @@ function drawHUD(P){
   ctx.fillText('BEST '+save.best+' m', 20, 50);
   // pearls
   ctx.textAlign='right'; ctx.font='700 22px system-ui'; ctx.fillStyle='#fff';
-  ctx.fillText('◐ '+player.pearls, W-18, 18);
-  if(player.crystals>0){ ctx.font='700 16px system-ui'; ctx.fillStyle='#d6c4ff'; ctx.fillText('💎 '+player.crystals, W-18, 46); }
+  ctx.fillText('◐ '+player.pearls, W-62, 18);
+  if(player.crystals>0){ ctx.font='700 16px system-ui'; ctx.fillStyle='#d6c4ff'; ctx.fillText('💎 '+player.crystals, W-62, 46); }
+  ctx.shadowBlur=0; ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.arc(W-32,32,19,0,TAU); ctx.fill();         // ⏸-Knopf
+  ctx.fillStyle='#fff'; roundRect(W-38.5,23,4.5,18,2); ctx.fill(); roundRect(W-30,23,4.5,18,2); ctx.fill(); ctx.shadowBlur=6;
   // combo/mult
   if(player.combo>0){ ctx.textAlign='center'; ctx.font='800 26px system-ui'; ctx.fillStyle='#ffe36b';
     ctx.fillText('x'+player.mult.toFixed(1), W/2, 16);
@@ -1907,9 +1916,6 @@ function drawHUD(P){
   // floaters
   for(const f of floaters){ ctx.save(); ctx.globalAlpha=clamp(f.life/f.max,0,1); ctx.textAlign='center'; ctx.font=`800 ${f.size}px system-ui`;
     ctx.fillStyle=f.color; ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=6; ctx.fillText(f.txt,f.x,f.y); ctx.restore(); }
-  // pause hint
-  ctx.save(); ctx.globalAlpha=0.4; ctx.textAlign='right'; ctx.font='600 12px system-ui'; ctx.fillStyle='#fff';
-  ctx.fillText('⏸ P', W-18, H-24); ctx.restore();
 }
 
 //////////////////// Screens: Menu ////////////////////
@@ -3577,6 +3583,9 @@ function drawPause(){ // draw frozen game beneath then overlay
   btn('quit',bx,H*0.44+66,bw,46,'⌂  Menü',{c1:'#7a8aa0',c2:'#4a5a70',fs:16});
   drawButtons();
 }
+function pauseGame(){ state='pause'; player.holding=false; player.prevHold=false; Audio.setActive(false); }
+// App in den Hintergrund (Home-Taste, Anruf) = Pause statt weiterlaufen
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && state==='play') pauseGame(); });
 function pauseClick(x,y){ const id=hitButton(x,y); if(!id) return; Audio.sfx.button();
   if(id==='resume'){ state='play'; Audio.setActive(true);} else if(id==='quit'){ gameOverToMenu(); } }
 function gameOverToMenu(){ bankRun(); state='menu'; }
