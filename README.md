@@ -80,9 +80,9 @@ jeder **Wipeout** lässt sie um einen festen Betrag heranrollen. **1 Fehler = sp
 Gefahr, 3 in Folge = gefressen.** Immer gleich, unabhängig von Glück mit der Wellenform. Auf schmalen
 Handys kündigt Gischt am linken Rand sie an, bevor sie ins Bild rollt.
 
-**Kein Endlos-Lauf:** Das Tempo steigt nur bis 6000 m (vorher wuchs es endlos – ein Experte flog nach 10 min mit 67.000 px/s
-über 1,5 Mio. m). Ab 8000 m wird die Welle langsam stärker (Banner „Die Welle wird stärker"), so endet auch ein perfekter
-Lauf – im Bot-Test nach 14.000–24.000 m.
+**Tempo-Grenze:** Das Tempo steigt nur bis 6000 m (vorher wuchs es endlos – ein Experte flog nach 10 min mit 67.000 px/s
+über 1,5 Mio. m und konnte gar nicht mehr verlieren). Danach bleibt es gleich schwer: Wer gut ist und sauber ausweicht,
+surft so lange er will – verlieren kann man nur durch eigene Fehler, nie durch einen versteckten Timer.
 
 **Ausnahme: der Hai. 🦈** Er ist selten, kündigt sich mit pulsierender roter Warn-Aura an — und frisst
 dich bei Berührung sofort (drüberspringen = sicher, Schild frisst stattdessen den Hai).

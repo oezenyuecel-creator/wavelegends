@@ -766,7 +766,8 @@ function updatePlay(dt){
   if(bi!==lastChordIdx){ lastChordIdx=bi; Audio.setChord(CHORDS[bi]); }
 
   const B=player.B;
-  // Tempo-Rampe endet bei 6000 m: vorher wuchs sie endlos (Bot: 67.000 px/s nach 10 min, Lauf ohne Ende).
+  // Tempo-Rampe endet bei 6000 m: vorher wuchs sie endlos (Bot: 67.000 px/s nach 10 min) und das Spiel wurde
+  // unverlierbar. Jetzt bleibt es ab 6000 m gleich schwer: wer gut ist, surft beliebig lange, Fehler zählen weiter.
   // Unter 6000 m ist alles exakt wie bisher.
   const rampD = Math.min(player.dist, 6000);
   const globalSpeed = 1 + rampD/6000*0.6; // gentle speed ramp
@@ -905,10 +906,7 @@ function updatePlay(dt){
   // => 1 Fehler spürbar, 2 kurz nacheinander gefährlich, 3 in Folge = gefressen.
   const floorV = 400 + Math.min(player.dist*0.05, 250);
   const wipePenalty = 450 + Math.min(player.dist*0.02, 100);
-  // Ab 8000 m wird die Welle langsam stärker, damit auch perfekte Läufe enden (vorher: nach ~20.000 m unbesiegbar)
-  const late = Math.max(0, player.dist-8000)*0.012;
-  if(late>0 && !player._lateWarn && !tut.active){ player._lateWarn=true; banner('🌊 DIE WELLE WIRD STÄRKER','Ab jetzt holt sie langsam auf – Turbo hilft!',true); }
-  const regen = 40 + player.vx*0.04 - Math.min(player.dist*0.005, 20) - late;
+  const regen = 40 + player.vx*0.04 - Math.min(player.dist*0.005, 20);
   player.sinceWipe = player.wipe>0 ? 0 : player.sinceWipe+dt;
   let gapRate;
   if(player.wipe>0) gapRate = -wipePenalty/0.75;               // Strafe über die Wipeout-Dauer verteilt (sichtbares Heranrollen)
