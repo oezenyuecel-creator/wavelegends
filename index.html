@@ -277,8 +277,8 @@ const ACH=[
   {id:'boss',   icon:'🐙', name:'Kraken-Jäger',     scope:'life', key:'boss',                                                                tiers:[1,5,20],          unit:'Kraken', gold:'ink'},
   {id:'combo',  icon:'🔥', name:'Combo-König',      scope:'run',  val:()=>runStats.maxMult,     rec:()=>(save.records||{}).combo||0,        tiers:[3,6,10],          unit:'', pre:'x'},
   {id:'pearls', icon:'◐',  name:'Perlentaucher',    scope:'life', key:'pearls',                                                              tiers:[1000,5000,20000], unit:'Perlen', gold:'pearls'},
-  {id:'near',   icon:'🦈', name:'Hai-Flüsterer',    scope:'life', key:'nearMiss',                                                            tiers:[1,10,30],         unit:'knapp'},
-  {id:'chest',  icon:'💰', name:'Schatzjäger',      scope:'life', key:'chest',                                                               tiers:[1,10,30],         unit:'Truhen'},
+  {id:'near',   icon:'🦈', name:'Hai-Flüsterer',    scope:'life', key:'nearMiss',                                                            tiers:[1,10,30],         unit:'knappe Sprünge', unit1:'knapper Sprung'},
+  {id:'chest',  icon:'💰', name:'Schatzjäger',      scope:'life', key:'chest',                                                               tiers:[1,10,30],         unit:'Truhen', unit1:'Truhe'},
   {id:'friends',icon:'🐬', name:'Meeresfreund',     scope:'life', key:'friends',                                                             tiers:[3,15,40],         unit:'Begegnungen'},
   {id:'streak', icon:'🛡', name:'Unerschütterlich', scope:'run',  val:()=>runStats.noWipeBest,  rec:()=>(save.records||{}).streak||0,       tiers:[500,1500,3000],   unit:'m ohne Wipeout'},
   {id:'total',  icon:'🌊', name:'Dauersurfer',      scope:'life', key:'dist', div:1000,                                                      tiers:[10,50,200],       unit:'km'},
@@ -2185,7 +2185,7 @@ function drawAchievements(){
     else {
       const v=achValue(a,false), goal=a.tiers[tier], pre=a.pre||'';
       const shown = a.scope==='run' ? 'Bestwert '+pre+(a.pre?(Math.floor(v*10)/10):fmtNum(v)) : (a.div? (Math.floor(v*10)/10).toLocaleString('de-DE') : fmtNum(v));
-      ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText(shown+' / '+pre+fmtNum(goal)+(a.unit?' '+a.unit:''), cx+48, y+46);
+      ctx.fillStyle='rgba(255,255,255,.78)'; ctx.fillText(shown+' / '+pre+fmtNum(goal)+(a.unit?' '+(goal===1&&a.unit1?a.unit1:a.unit):''), cx+48, y+46);
       const bw=cw-48-14; roundRect(cx+48, y+52, bw, 6, 3); ctx.fillStyle='rgba(255,255,255,.15)'; ctx.fill();
       roundRect(cx+48, y+52, Math.max(4, bw*clamp(v/goal,0,1)), 6, 3); ctx.fillStyle='#2fd0ff'; ctx.fill();
       ctx.font='600 11px system-ui'; ctx.fillStyle='#ffd36b';
@@ -3369,7 +3369,7 @@ function drawBonusEnd(){
   if(b.kind==='shark') lines.push(['Ausgewichen '+b.dodged+' · Perfekt '+b.perfect,'600 13px system-ui','rgba(255,255,255,.75)']);
   if(b.kind==='levi') lines.push(['Höchster Flug '+Math.round(b.maxH/10)+' m · Saubere Landungen '+b.clean,'600 13px system-ui','rgba(255,255,255,.75)']);
   if(b.kind==='manta') lines.push(['Ringe '+b.ringsHit+'/'+b.ringsAll+' · Kette '+b.bestChain+' · 🌠 '+b.starsGot,'600 13px system-ui','rgba(255,255,255,.75)']);
-  if(b.gems) lines.push(['💎 +'+b.gems+' Kristall','700 15px system-ui','#d6c4ff']);
+  if(b.gems) lines.push(['💎 +'+b.gems+(b.gems===1?' Kristall':' Kristalle'),'700 15px system-ui','#d6c4ff']);
   if(b.unlocked) lines.push(['🎉 '+K.reward.name+' freigeschaltet!','800 15px system-ui','#ffd36b']);
   else if(bonusRewardOwned(b.kind)) lines.push([K.token+' '+K.tokenName+': '+bonusTokens(b.kind)+(b.tokens?'  (+1)':''),'700 15px system-ui','#ffd36b']);
   else lines.push([K.token+' '+K.tokenName+': '+Math.min(bonusTokens(b.kind),TOKENS_NEEDED)+'/'+TOKENS_NEEDED+(b.tokens?'  (+1)':''),'700 15px system-ui','#ffd36b']);
@@ -3542,7 +3542,7 @@ function prepareShareImage(){
   if(rp){ const st=[]; // nur Werte zum Angeben – keine "0 Flips"
     if(rp.vals.flips>0) st.push('↻ '+rp.vals.flips+(rp.vals.flips===1?' Flip':' Flips'));
     if(rp.vals.combo>1) st.push('x'+rp.vals.combo.toFixed(1)+' Combo');
-    if(rp.vals.pearls>0) st.push('◐ '+rp.vals.pearls+' Perlen');
+    if(rp.vals.pearls>0) st.push('◐ '+rp.vals.pearls+(rp.vals.pearls===1?' Perle':' Perlen'));
     g.font='700 44px system-ui'; g.fillStyle='rgba(255,255,255,.95)'; g.fillText(st.join('   ·   '), 540, 575); }
   g.font='800 54px system-ui'; g.fillStyle='#fff'; g.fillText('Schaffst du das?', 540, 1210);
   g.font='600 34px system-ui'; g.fillStyle='rgba(255,255,255,.88)'; g.fillText(SHARE_URL.replace('https://','').replace(/\/$/,''), 540, 1270);
@@ -3614,7 +3614,7 @@ function drawOver(){
       y=wrapText('⬆ LEVEL '+rp.xp.after+'!  +'+rp.xp.pearls+' ◐'+(rp.xp.trails.length?' · Neuer Trail: '+rp.xp.trails.map(k=>TRAILS[k].name).join(', '):''), cx, y, cw, 18); }
   }
   if(rp && (rp.gems||(rp.xp&&rp.xp.gems))){ y+=20; ctx.font='700 13px system-ui'; ctx.fillStyle='#d6c4ff';
-    ctx.fillText('💎 +'+((rp.gems||0)+((rp.xp&&rp.xp.gems)||0))+' Kristalle', cx, y); }
+    const gm=(rp.gems||0)+((rp.xp&&rp.xp.gems)||0); ctx.fillText('💎 +'+gm+(gm===1?' Kristall':' Kristalle'), cx, y); }
   if(runStats.achNew.length){ y+=20; ctx.font='600 12px system-ui'; ctx.fillStyle='#d6c4ff'; y=wrapText('🏆 Neu: '+runStats.achNew.join(', '), cx, y, cw, 16); }
   if(rp && rp.ticket){ y+=20; ctx.font='700 13px system-ui'; ctx.fillStyle='#7dfbe8'; ctx.fillText('🎟 +1 Bonus-Ticket (Kraken besiegt)', cx, y); }
   if(rp && rp.cause){ y+=26; ctx.font='500 13px system-ui'; ctx.fillStyle='rgba(255,255,255,.82)'; y=wrapText(rp.cause, cx, y, cw, 17); }
