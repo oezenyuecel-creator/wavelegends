@@ -2314,9 +2314,9 @@ const BONUS_KINDS={
   levi:  { name:'Leviathan-Ritt', icon:'🐉', token:'⚡', tokenName:'Sturmperlen', key:'stormPearls',
            reward:{type:'trail', key:'storm', name:'Sturmblitz-Spur'}, chord:2, c1:'#6a8cff', c2:'#3a52c8', edge:'rgba(150,175,255,.6)',
            desc:['Surfe im Sturm auf dem Rücken des Ungeheuers.','Spring von Buckel zu Buckel · Finale: Kristallring'] },
-  manta: { name:'Manta-Flug', icon:'🌈', token:'🌈', tokenName:'Regenbogen-Ketten', key:'rainbows',
+  manta: { name:'Galaxie-Manta', icon:'🌌', token:'🌈', tokenName:'Regenbogen-Ketten', key:'rainbows',
            reward:{type:'board', key:'manta', name:'Manta-Board'}, chord:0, c1:'#ff7ab8', c2:'#b04ad6', edge:'rgba(255,140,200,.6)',
-           desc:['Reite einen Manta durch bunte Ringe.','Tief tauchen = hoch springen · 6 am Stück = Kette'] },
+           desc:['Düse mit dem Manta durch die Galaxie.','Halten = steigen · Warp, Sternschnuppen, Asteroiden'] },
 };
 const BONUS_ORDER=['lagoon','shark','levi','manta'];
 const bonus={done:true, seed:0, kind:'lagoon'};
@@ -2382,7 +2382,7 @@ function drawBonusHUD(){
   const intro={ lagoon:['🧜 Folge der Meerjungfrau!','HALTEN = abtauchen · LOSLASSEN = aufsteigen'],
                 shark: ['🦈 Flieh vor dem Riesenhai!','Wird der Ring GRÜN: tippen = springen'],
                 levi:  ['🐉 Reite den Leviathan!','HALTEN bergab = Schwung holen','LOSLASSEN = springen – übers Wasser!'],
-                manta: ['🌈 Flieg durch die Ringe!','HALTEN = abtauchen · LOSLASSEN = hoch','Tief tauchen = hoch springen'] }[b.kind];
+                manta: ['🌌 Ab durch die Galaxie!','HALTEN = steigen · LOSLASSEN = sinken','Folge dem Sternenstaub durch die Ringe'] }[b.kind];
   if(b.t<4){ ctx.globalAlpha=clamp((4-b.t)/0.6,0,1); ctx.textAlign='center'; ctx.shadowColor='rgba(0,20,40,.75)'; ctx.shadowBlur=12;
     ctx.font='900 22px system-ui'; ctx.fillStyle='#fff'; ctx.fillText(intro[0], W/2, H*0.3);
     ctx.font='800 14px system-ui'; ctx.fillStyle='#fff';
@@ -3043,77 +3043,73 @@ function drawLeviHUD(){
   if(b.t>LEVI_RIDE-12 && !b.launched){ ctx.fillStyle='#e8dcff'; ctx.fillRect(tx+tw*kr-1,38,2,17); ctx.font='11px system-ui'; ctx.fillText('💎', tx+tw*kr-7, 56); }
 }
 
-// ---------- 🌈 Manta-Flug ----------
-// Du reitest einen Mantarochen durch klares Tropenwasser und fliegst durch bunte Ringe – unter Wasser und hoch in der Luft.
-// HALTEN = abtauchen, LOSLASSEN = hochschießen. Je tiefer du tauchst, desto höher springt der Manta aus dem Wasser.
-// Ringe in Folge erhöhen den Multiplikator, 6 am Stück = Regenbogen-Kette. Kein Game Over: verpasste Ringe brechen nur die Kette.
-// Die Ringe legt ein „Geist" mit derselben Physik vorweg – jeder Ring liegt auf einer echten, fliegbaren Bahn.
-const MANTA_TIME=40, MANTA_FLOOR=300, MANTA_G=700, MANTA_G_HOLD=1400, MANTA_LEAP=0.82;
-const MANTA_RING=62, MANTA_PERFECT=16, MANTA_HINT=2.4;
+// ---------- 🌌 Galaxie-Manta ----------
+// Ein kosmischer Manta düst durch die Galaxie. HALTEN = steigen, LOSLASSEN = sinken – reagiert sofort wie ein Jetpack.
+// Hohes Tempo, dichte Abfolge: Sternenstaub-Spuren zeigen die Bahn, Neon-Ringe in Regenbogenfarben (6 am Stück = Kette),
+// alle paar Sekunden ein Ereignis: Warp-Tunnel, Sternschnuppen-Regen, Asteroidenfeld, Supernova-Finale.
+// Kein Game Over: Asteroiden kosten nur Perlen und die Kette. Ringe, Staub und Sterne legt ein „Geist" mit derselben Physik
+// vorweg – alles liegt auf einer echten, fliegbaren Bahn, Asteroiden immer abseits davon.
+const MANTA_TIME=40, MANTA_RING=70, MANTA_PERFECT=18, MANTA_HINT=1.6;
+// Vorwärts schnell, auf und ab gemächlich: so bleibt es auch mit Kinder-Reaktionszeit (0,3–0,4 s) lösbar (Bot-Messung)
+const GAL_UP=1300, GAL_DOWN=1000, GAL_DRAG=2.2, GAL_VMAX=340;
 const RING_COLS=['#ff4a5a','#ff9a2b','#ffd83a','#3ddc84','#3aa0ff','#a05cff'];
-function mantaZoom(){ return clamp(W/400, 0.8, 1); }
-function mantaSpeed(t){ return 270+Math.min(t,32)*2.5; }
-// Gemeinsame Physik für Spieler und Geist. y: Wasseroberfläche = 0, unter Wasser positiv, in der Luft negativ.
-// Unter Wasser ruhig steuerbar wie in der Lagune; beim Auftauchen springt der Manta so hoch, wie er vorher tief war
-// (Sprunghöhe = 0,82 × Tauchtiefe) – das ist die eine Regel, die man lernen muss.
-function mantaStep(s,hold,dt){
-  const air=s.y<0;
-  if(air) s.vy+=(hold?MANTA_G_HOLD:MANTA_G)*dt;
-  else { s.vy+=(hold?1000:-800)*dt; s.vy*=1-1.8*dt; s.vy=clamp(s.vy,-300,300); s.dive=Math.max(s.dive||0, s.y); }
+function mantaZoom(){ return clamp(W/430, 0.8, 1); }
+function galWarp(t){ let f=0; for(const w of bonus.warps||[]) f=Math.max(f, smooth(clamp((t-w[0])/0.4,0,1))*smooth(clamp((w[1]-t)/0.4,0,1))); return f; }
+function mantaSpeed(t){ return (430+Math.min(t,30)*3)*(1+0.55*galWarp(t)); }
+function galEventAt(t){ return (bonus.events||[]).find(e=>t>=e.t0 && t<e.t1); }
+function mantaStep(s,hold,dt){ // gemeinsame Physik für Spieler und Geist
+  s.vy+=(hold?-GAL_UP:GAL_DOWN)*dt; s.vy*=1-GAL_DRAG*dt; s.vy=clamp(s.vy,-GAL_VMAX,GAL_VMAX);
   s.y+=s.vy*dt;
-  if(air && s.y>=0){ s.vy*=0.5; s.dive=s.y; s.splash=true; }                          // Eintauchen bremst
-  else if(!air && s.y<0){
-    if((s.dive||0)>=35){ s.vy=-Math.sqrt(2*MANTA_G*MANTA_LEAP*s.dive); s.leap=true; }   // Sprung aus dem Wasser
-    else { s.y=0; s.vy=Math.max(s.vy,0); }                                             // nur aufgetaucht: an der Oberfläche treiben
-    s.dive=0; }
-  if(s.y>MANTA_FLOOR){ s.y=MANTA_FLOOR; if(s.vy>0) s.vy=0; }
+  const B=bonus.bounds; if(s.y<B.top){ s.y=B.top; if(s.vy<0) s.vy=0; } if(s.y>B.bot){ s.y=B.bot; if(s.vy>0) s.vy=0; }
   s.t+=dt; s.x+=mantaSpeed(s.t)*dt;
 }
 function initManta(){
-  const b=bonus;
-  Object.assign(b,{ p:{x:0,y:40,vy:0,t:0}, g:{x:0,y:40,vy:0,t:0, plan:[], lastRingT:-1, lastVy:0, ringIdx:0, sinceRing:[]},
-    rings:[], combo:0, mult:1, chainCols:[], chains:0, bestChain:0, ringsHit:0, ringsAll:0, perfects:0, ending:0, bubbleT:0, trail:[], wasAir:false, rainbowA:0, rainbowFlash:0 });
+  const b=bonus, Z=mantaZoom(), VH=H/Z;
+  b.bounds={top:100, bot:VH-50};
+  const mid=(b.bounds.top+b.bounds.bot)/2, order=Math.random()<0.5?['stars','rocks']:['rocks','stars'];
+  b.events=[{k:'warp',t0:9,t1:12.5},{k:order[0],t0:16,t1:19.5},{k:order[1],t0:22.5,t1:26},{k:'warp',t0:29,t1:32.5},{k:'nova',t0:36,t1:41}];
+  b.warps=b.events.filter(e=>e.k==='warp').map(e=>[e.t0,e.t1]);
+  Object.assign(b,{ p:{x:0,y:mid,vy:0,t:0}, g:{x:0,y:mid,vy:0,t:0, mode:'hover', target:mid, hoverT:0.8, lastRingT:-1, lastDustT:-1, lastRockT:-1, lastStarT:-1, ringIdx:0},
+    rings:[], rocks:[], stars:[], combo:0, mult:1, chainCols:[], chains:0, bestChain:0, ringsHit:0, ringsAll:0, perfects:0, starsGot:0, rockHits:0,
+    ending:0, trail:[], glitterT:0, rainbowA:0, rainbowFlash:0, evShown:-1 });
 }
-// Geist: zufällige, aber fliegbare Manöver; Ringe an den Hoch- und Tiefpunkten seiner Bahn
-function mantaGhostPlan(g){
-  if(g.t<2.5) { g.plan.push({hold:false, dur:0.6}, {hold:true, dur:0.35}, {hold:false, dur:0.5}); return; }
-  if(Math.random()<0.55){ g.plan.push({hold:true, dur:rand(0.4,0.95)}, {hold:false, dur:3, until:'back'}); }   // tief tauchen, dann Sprung aus dem Wasser
-  else g.plan.push({hold:true, dur:rand(0.3,0.55)}, {hold:false, dur:rand(0.4,0.7)});                         // Welle unter Wasser
-}
+// Geist: fliegt zu Zielhöhen und schwebt dort kurz – so entstehen klare, lesbare Bahnen
 function mantaGhostStep(dt){
-  const b=bonus, g=b.g;
-  if(!g.plan.length) mantaGhostPlan(g);
-  const seg=g.plan[0];
-  g.splash=false; mantaStep(g, seg.hold, dt); seg.dur-=dt;
-  if(seg.until==='back' && g.backSeen && g.y>70) seg.dur=0;
-  if(g.splash) g.backSeen=true;
-  if(seg.dur<=0){ g.plan.shift(); g.backSeen=false; }
-  const turned = (g.lastVy<0 && g.vy>=0) || (g.lastVy>0 && g.vy<=0);  // Hoch- oder Tiefpunkt
-  g.lastVy=g.vy;
-  const since=g.t-g.lastRingT, okY = g.y<-50 || (g.y>45 && g.y<MANTA_FLOOR-35);
-  if(g.t>1.6 && g.t<MANTA_TIME-0.3 && okY && ((turned && since>=1.0) || since>=1.8)){
-    b.rings.push({x:g.x, y:g.y, col:RING_COLS[g.ringIdx%6], passed:false, hit:false, fx:0}); g.ringIdx++; g.lastRingT=g.t;
-    // zwei Perlen auf halbem Weg zwischen den Ringen – als Belohnung und sanfter Hinweis auf die Bahn
-    const mid=g.sinceRing[Math.floor(g.sinceRing.length*0.4)], mid2=g.sinceRing[Math.floor(g.sinceRing.length*0.6)];
-    for(const m of [mid,mid2]) if(m && Math.abs(m.y)>18) b.ents.push({type:'pearl', x:m.x, y:m.y, r:9});
-    g.sinceRing=[];
-  } else if(Math.round(g.t*60)%6===0) g.sinceRing.push({x:g.x, y:g.y});
+  const b=bonus, g=b.g, B=b.bounds, ev=galEventAt(g.t), warp=ev&&ev.k==='warp', lo=B.top+70, hi=B.bot-70;
+  if(g.mode==='move' && Math.abs(g.y-g.target)<22){ g.mode='hover'; g.hoverT=warp?rand(0.25,0.4):rand(0.3,0.6); }
+  if(g.mode==='hover' && (g.hoverT-=dt)<=0){
+    const d=(warp?rand(60,140):rand(90,220))*(Math.random()<0.5?-1:1);
+    g.target=clamp(g.y+d, lo, hi); if(Math.abs(g.target-g.y)<60) g.target=clamp(g.y-d, lo, hi); g.mode='move'; }
+  const hold = g.mode==='move' ? g.y>g.target : (g.vy>60 ? true : g.vy<-60 ? false : g.y>g.target);
+  mantaStep(g, hold, dt);
+  if(g.t<1 || g.t>MANTA_TIME-0.2) return;
+  const gap = warp ? 0.48 : 0.62+hash01(g.ringIdx*3.7)*0.23;
+  const since=g.t-g.lastRingT;                                                         // Ringe bevorzugt dort, wo die Bahn ruhig ist
+  if((g.mode==='hover' && since>=gap*0.8) || since>=gap*1.5){ b.rings.push({x:g.x, y:g.y, col:RING_COLS[g.ringIdx%6], passed:false, hit:false, fx:0}); g.ringIdx++; g.lastRingT=g.t; }
+  else if(g.t-g.lastDustT>=0.15 && g.t-g.lastRingT>0.16 && gap-(g.t-g.lastRingT)>0.12){ b.ents.push({type:'dust', x:g.x, y:g.y, r:8}); g.lastDustT=g.t; }
+  if(ev && ev.k==='rocks' && g.t-g.lastRockT>=0.5){ g.lastRockT=g.t;                                      // Asteroiden immer abseits der Bahn
+    const side = g.y-rand(130,210)>B.top+20 && (Math.random()<0.5 || g.y+150>B.bot) ? -1 : 1;
+    const ry=clamp(g.y+side*rand(130,210), B.top+10, B.bot-10);
+    if(Math.abs(ry-g.y)>=120) b.rocks.push({x:g.x+rand(-30,30), y:ry, r:rand(22,32), rot:rand(TAU), spin:rand(-2,2), seed:randi(0,999), hit:false}); }
+  if(ev && ev.k==='stars' && g.t-g.lastStarT>=0.45){ g.lastStarT=g.t;                                     // Sternschnuppe kreuzt die Bahn genau dann, wenn man dort ist
+    b.stars.push({xT:g.x, yT:g.y+rand(-20,20), T:g.t, vx:-170, vy:270, got:false}); }
 }
+function mantaPart(kind,x,y,vx,vy,life,r,col){ bonus.parts.push({kind,x,y,vx,vy,life,max:life,r,col}); }
 function mantaFloat(txt,col){ const p=bonus.p; bonus.floats.push({x:p.x, y:p.y-50, txt, col, life:1.1}); }
+function galStarPos(s,t){ return {x:s.xT+s.vx*(t-s.T), y:s.yT+s.vy*(t-s.T)}; }
 function updateManta(dt){
   const b=bonus, p=b.p, Z=mantaZoom(), VW=W/Z;
-  while(b.g.x < p.x+VW*2.2 && b.g.t < MANTA_TIME+1) mantaGhostStep(1/60);
-  const ox=p.x; p.splash=false; p.leap=false;
-  mantaStep(p, b.ending>0 ? false : b.holding, dt); b.t=p.t;
-  // Zielhilfe: kurz vor einem Ring zieht er den Manta sanft zur Mitte – nur wenn man schon in der Nähe ist (max. ~35 px)
+  while(b.g.x < p.x+VW*2 && b.g.t < MANTA_TIME+1) mantaGhostStep(1/60);
+  const ox=p.x;
+  mantaStep(p, b.ending>0 ? false : b.holding, dt); b.t=p.t; if(b.hurtT>0) b.hurtT-=dt;
+  // Ereignis ankündigen
+  const ei=b.events.findIndex(e=>b.t>=e.t0-0.7 && b.t<e.t1);
+  if(ei>=0 && ei!==b.evShown){ b.evShown=ei; const k=b.events[ei].k;
+    bonusMsg({warp:'⚡ WARP-TUNNEL!', stars:'🌠 Sternschnuppen – fang sie!', rocks:'☄️ Asteroiden – ausweichen!', nova:'✨ Supernova: Perlen ×2!'}[k],1.6); Audio.sfx.boost(); }
+  // Zielhilfe: kurz vor einem Ring zieht er den Manta sanft zur Mitte (max. ~50 px)
   const nr=b.rings.find(r=>!r.passed && r.x>=p.x);
-  if(nr && b.ending<=0){ const dx=nr.x-p.x, dy=nr.y-p.y;
-    if(dx<130 && Math.abs(dy)<110){ let ny=p.y+clamp(dy*4,-150,150)*(1-dx/130)*dt;
-      if((p.y>=0)!==(ny>=0)) ny = p.y>=0 ? 0 : -0.5;                    // die Hilfe schiebt nie über die Wasseroberfläche
-      p.y=ny; } }
-  if(p.leap){ Audio.sfx.jump(); mantaSplash(p.x, p.vy<-420); }
-  if(p.splash){ Audio.sfx.splash(); mantaSplash(p.x, true); if(b.shakeT<0.15) b.shakeT=0.15; }
-  if(p.y<0 && Math.random()<dt*18) mantaPart('drop', p.x-18+rand(-12,12), p.y+8, rand(-40,10), rand(0,60), 0.6, rand(1.2,2.4), '#e8fbff'); // tropft im Flug
+  if(nr && b.ending<=0){ const dx=nr.x-p.x, dy=nr.y-p.y; if(dx<160 && Math.abs(dy)<130) p.y+=clamp(dy*5,-200,200)*(1-dx/160)*dt; }
+  const nova = galEventAt(b.t)?.k==='nova' ? 2 : 1;
   // Ringe
   for(const r of b.rings){ if(r.passed || p.x<r.x) continue;
     r.passed=true; b.ringsAll++;
@@ -3121,221 +3117,195 @@ function updateManta(dt){
     if(dy<=MANTA_RING){
       r.hit=true; r.fx=1; b.ringsHit++; b.combo++; b.chainCols.push(r.col); b.bestChain=Math.max(b.bestChain,b.combo);
       b.mult=Math.min(4, 1+Math.floor(b.combo/4));
-      const perfect=dy<=MANTA_PERFECT, gain=6+2*b.mult+(perfect?2:0); b.pearls+=gain; if(perfect) b.perfects++;
+      const perfect=dy<=MANTA_PERFECT, gain=(2+b.mult+(perfect?1:0))*nova; b.pearls+=gain; if(perfect) b.perfects++;
       mantaFloat((perfect?'PERFEKT! ':'')+'+'+gain, perfect?'#7dffb0':r.col); Audio.sfx.collect(b.combo);
       for(let i=0;i<(perfect?18:12);i++) mantaPart('spark', r.x, r.y+rand(-MANTA_RING,MANTA_RING), rand(-170,170), rand(-150,150), rand(0.5,0.9), rand(3,6), i%4?r.col:'#ffffff');
-      if(b.chainCols.length===6){ b.chainCols=[]; b.chains++; b.rainbowFlash=1; b.rainbowA=Math.min(1,0.5+0.25*b.chains); // Regenbogen-Kette: Regenbogen am Himmel
-        if(b.chains===1){ b.tokens=1; bonusMsg('🌈 Regenbogen-Kette!',1.6); }
-        else if(b.gems<1){ b.gems=1; bonusMsg('🌈 Noch eine Kette! 💎 +1',1.6); }
-        else { b.pearls+=20; bonusMsg('🌈 Kette! +20 ◐',1.4); }
+      if(b.chainCols.length===6){ b.chainCols=[]; b.chains++; b.rainbowFlash=1; b.rainbowA=Math.min(1,0.5+0.25*b.chains);   // Regenbogen-Kette
+        if(b.chains===1){ b.tokens=1; bonusMsg('🌈 Regenbogen-Kette!',1.4); }
+        else if(b.gems<1){ b.gems=1; bonusMsg('🌈 Noch eine Kette! 💎 +1',1.4); }
+        else { b.pearls+=20; bonusMsg('🌈 Kette! +20 ◐',1.2); }
         Audio.sfx.chest(); }
     } else { r.fx=-1; if(b.combo>=3) mantaFloat('Kette gerissen','#e6f6ff'); b.combo=0; b.mult=1; b.chainCols=[]; }
   }
   for(const r of b.rings) if(r.fx>0) r.fx=Math.max(0,r.fx-dt*1.6);
   b.rings=b.rings.filter(r=>r.x>p.x-VW*0.5);
-  // Perlen
-  for(const e of b.ents){ if(e.got) continue; const dx=e.x-p.x, dy=e.y-p.y, rr=e.r+22; if(dx*dx+dy*dy>rr*rr) continue; e.got=true; b.pearls+=2; Audio.sfx.collect(b.pearls/2); }
+  // Sternenstaub
+  for(const e of b.ents){ if(e.got) continue; const dx=e.x-p.x, dy=e.y-p.y; if(dx*dx+dy*dy>900) continue; e.got=true; b.pearls+=nova; Audio.sfx.collect(b.pearls); }
   b.ents=b.ents.filter(e=>!e.got && e.x>p.x-VW*0.5);
-  // Blasen, Spritzer, Spur
-  if(p.y>10){ b.bubbleT-=dt; if(b.bubbleT<=0){ b.bubbleT=0.1; mantaPart('bubble', p.x-26, p.y-4, -20, -60-rand(40), 1.1, rand(1.5,3.5)); } }
-  for(const q of b.parts){ q.life-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt;
-    if(q.kind==='drop'){ q.vy+=900*dt; if(q.y>2 && q.vy>0) q.life=0; }
-    else if(q.kind==='bubble'){ q.vy-=30*dt; q.x+=Math.sin(q.life*9+q.r)*12*dt; if(q.y<2) q.life=0; }
-    else if(q.kind==='spark'){ q.vx*=1-2.5*dt; q.vy=q.vy*(1-2.5*dt)+40*dt; } }
-  if(b.rainbowFlash>0) b.rainbowFlash=Math.max(0,b.rainbowFlash-dt*0.6);
+  // Sternschnuppen
+  for(const s of b.stars){ if(s.got) continue; const q=galStarPos(s,b.t), dx=q.x-p.x, dy=q.y-p.y;
+    if(dx*dx+dy*dy<38*38){ s.got=true; b.starsGot++; b.pearls+=6*nova; mantaFloat('🌠 +'+6*nova,'#ffe36b'); Audio.sfx.chime();
+      for(let i=0;i<10;i++) mantaPart('spark', q.x, q.y, rand(-150,150), rand(-150,150), rand(0.4,0.8), rand(3,5), i%2?'#ffe36b':'#ffffff'); } }
+  b.stars=b.stars.filter(s=>!s.got && b.t-s.T<1.2);
+  // Asteroiden: kein Game Over, nur Perlen + Kette
+  for(const r of b.rocks){ r.rot+=r.spin*dt; if(r.hit || b.hurtT>0) continue; const dx=r.x-p.x, dy=r.y-p.y, rr=r.r+18;
+    if(dx*dx+dy*dy<rr*rr){ r.hit=true; b.rockHits++; b.hurtT=1; b.shakeT=0.3; const lost=Math.min(5,b.pearls); b.pearls-=lost;
+      b.combo=0; b.mult=1; b.chainCols=[]; mantaFloat('Bonk!'+(lost?' -'+lost:''),'#ffb3b3'); Audio.sfx.land(false);
+      for(let i=0;i<10;i++) mantaPart('spark', r.x, r.y, rand(-160,160), rand(-160,160), rand(0.4,0.7), rand(2,4), '#c9a27a'); } }
+  b.rocks=b.rocks.filter(r=>r.x>p.x-VW*0.5);
+  // Kometenschweif + Partikel
+  b.glitterT-=dt; if(b.glitterT<=0){ b.glitterT=0.03; mantaPart('glit', p.x-30+rand(-6,6), p.y+rand(-10,10), -rand(40,120), rand(-30,30), rand(0.35,0.7), rand(1.5,3.2), RING_COLS[Math.floor(b.t*8)%6]); }
+  for(const q of b.parts){ q.life-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt; q.vx*=1-2.5*dt; q.vy*=1-2.5*dt; }
   b.parts=b.parts.filter(q=>q.life>0);
+  if(b.rainbowFlash>0) b.rainbowFlash=Math.max(0,b.rainbowFlash-dt*0.6);
   b.trail.push({x:p.x, y:p.y}); if(b.trail.length>18) b.trail.shift();
   if(b.ending>0){ b.ending-=dt; if(b.ending<=0) endBonus(); }
-  else if(b.t>=MANTA_TIME){ b.ending=1.6; bonusMsg(b.chains?'🌈 Super geflogen!':'🌊 Geschafft!',1.6); }
+  else if(b.t>=MANTA_TIME){ b.ending=1.5; bonusMsg(b.chains?'🌌 Super geflogen!':'🌌 Geschafft!',1.5); }
 }
-// ---------- Manta-Flug: Grafik (Look angelehnt ans Hauptspiel: Sonnenstrahlen, Inseln, Gischt, Licht unter Wasser) ----------
-function mantaPart(kind,x,y,vx,vy,life,r,col){ bonus.parts.push({kind,x,y,vx,vy,life,max:life,r,col}); }
-function mantaSplash(x,big){ // Fontäne + Wellenring beim Aus- und Eintauchen
-  for(let i=0;i<(big?28:16);i++) mantaPart('drop', x+rand(-22,22), -2, rand(-140,170), -rand(160,big?560:380), rand(0.5,0.95), rand(1.6,3.8), i%3?'#ffffff':'#c8f6ff');
-  for(let i=0;i<12;i++) mantaPart('bubble', x+rand(-26,26), rand(8,46), rand(-30,30), -rand(40,110), rand(0.6,1.3), rand(2,4.8));
-  mantaPart('ripple', x, 0, 0, 0, 0.7, big?38:26);
-}
-function mantaSurf(x,t){ return Math.sin(x/70+t/420)*3 + Math.sin(x/23-t/260)*1.4; } // nur Optik
+
+// ---------- Galaxie-Manta: Grafik ----------
 function drawSpark(x,y,r){ ctx.beginPath(); for(let k=0;k<8;k++){ const rr=k%2?r*0.32:r, an=k*Math.PI/4; ctx.lineTo(x+Math.cos(an)*rr, y+Math.sin(an)*rr); } ctx.closePath(); ctx.fill(); }
-function drawPuffCloud(cx,cy,s){
-  ctx.fillStyle='rgba(255,255,255,.95)'; ctx.beginPath();
-  ctx.ellipse(cx,cy,48*s,15*s,0,0,TAU); ctx.arc(cx-20*s,cy-6*s,16*s,0,TAU); ctx.arc(cx+4*s,cy-14*s,21*s,0,TAU); ctx.arc(cx+26*s,cy-5*s,14*s,0,TAU); ctx.fill();
-  ctx.fillStyle='rgba(160,210,238,.45)'; ctx.beginPath(); ctx.ellipse(cx+2*s,cy+6*s,42*s,6*s,0,0,TAU); ctx.fill();
-}
-function drawPalm(x,y,h,col,t){
-  ctx.strokeStyle='#7a5a3a'; ctx.lineWidth=Math.max(2.5,h*0.06); ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x+h*0.25,y-h*0.55,x+h*0.1,y-h); ctx.stroke();
-  ctx.fillStyle=col; const tx=x+h*0.1, ty=y-h;
-  for(let l=0;l<6;l++){ ctx.save(); ctx.translate(tx,ty); ctx.rotate(-Math.PI*0.95+l*Math.PI*0.38+Math.sin(t/900+l)*0.05);
-    ctx.beginPath(); ctx.ellipse(h*0.26,0,h*0.3,h*0.07,0.25,0,TAU); ctx.fill(); ctx.restore(); }
-}
-// Manta in Draufsicht (so erkennt man ihn am besten), Kopf nach rechts, Flügel nach oben/unten
+// Kosmischer Manta in Draufsicht: violette Flügel mit Sternen, leuchtende Kanten
 function drawManta(x,y,sc,t,rot,air){
   ctx.save(); ctx.translate(x,y); ctx.scale(sc,sc); if(rot) ctx.rotate(rot);
-  const ph=t/(air?320:200), span=50*(air?0.96+0.04*Math.cos(ph):0.84+0.16*Math.cos(ph)), curl=Math.sin(ph)*6;
-  ctx.strokeStyle='#10243a'; ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(-22,0);          // Peitschenschwanz
+  const ph=t/210, span=50*(0.84+0.16*Math.cos(ph)), curl=Math.sin(ph)*6;
+  ctx.strokeStyle='#7ff6ff'; ctx.lineWidth=2.4; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(-22,0);            // leuchtender Schwanz
   ctx.bezierCurveTo(-40,Math.sin(t/180)*4,-58,Math.sin(t/160+1)*5,-82,Math.sin(t/140+2)*4); ctx.stroke();
-  for(const s of [-1,1]){                                                                                       // Flügel: oben = fern (dunkler)
+  for(const s of [-1,1]){
     const sp=span*(s<0?0.92:1.05), tipX=-12+curl*(s<0?-1:1);
-    const g=ctx.createLinearGradient(0,0,0,s*sp); g.addColorStop(0, s<0?'#1b406c':'#22528a'); g.addColorStop(1, s<0?'#2d68a8':'#3f86cc');
-    ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(22,s*5);
-    ctx.bezierCurveTo(16,s*sp*0.5, 2,s*sp*0.95, tipX,s*sp);                    // geschwungene Vorderkante
-    ctx.quadraticCurveTo(-12,s*sp*0.5,-24,s*4); ctx.closePath(); ctx.fill();   // Hinterkante zurück zur Schwanzwurzel
-    ctx.strokeStyle='rgba(8,20,36,.7)'; ctx.lineWidth=1.3; ctx.stroke();      // Kontur, damit er sich vom Wasser abhebt
-    ctx.strokeStyle='rgba(160,220,255,.6)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(22,s*5); ctx.bezierCurveTo(16,s*sp*0.5, 2,s*sp*0.95, tipX,s*sp); ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.75)'; ctx.beginPath(); ctx.moveTo(15,s*7);                                    // weißer Schulterfleck
+    const g=ctx.createLinearGradient(0,0,0,s*sp); g.addColorStop(0, s<0?'#24145e':'#2d1a78'); g.addColorStop(1, s<0?'#5a2fb8':'#7a44e0');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(22,s*5); ctx.bezierCurveTo(16,s*sp*0.5, 2,s*sp*0.95, tipX,s*sp);
+    ctx.quadraticCurveTo(-12,s*sp*0.5,-24,s*4); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.clip(); ctx.fillStyle='#ffffff';                                                               // Sterne auf den Flügeln
+    for(let i=0;i<9;i++){ const sx2=-16+hash01(i*3+(s>0?7:0))*34, sy2=s*sp*(0.2+hash01(i*5+1)*0.75); ctx.globalAlpha=0.4+0.6*Math.abs(Math.sin(t/300+i)); ctx.fillRect(sx2,sy2,1.6,1.6); }
+    ctx.restore();
+    ctx.save(); ctx.shadowColor='#7ff6ff'; ctx.shadowBlur=10; ctx.strokeStyle='#9ff8ff'; ctx.lineWidth=2;               // leuchtende Vorderkante
+    ctx.beginPath(); ctx.moveTo(22,s*5); ctx.bezierCurveTo(16,s*sp*0.5, 2,s*sp*0.95, tipX,s*sp); ctx.stroke(); ctx.restore();
+    ctx.fillStyle='rgba(190,250,255,.8)'; ctx.beginPath(); ctx.moveTo(15,s*7);                                     // heller Schulterfleck
     ctx.quadraticCurveTo(9,s*sp*0.42,2,s*sp*0.5); ctx.quadraticCurveTo(4,s*sp*0.3,8,s*8); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(200,230,255,.35)'; for(const [fx,fy] of [[-4,0.55],[-9,0.7],[-2,0.75]]){ ctx.beginPath(); ctx.arc(fx,s*sp*fy,1.6,0,TAU); ctx.fill(); }
   }
-  const bg=ctx.createLinearGradient(0,-11,0,11); bg.addColorStop(0,'#1f4a7a'); bg.addColorStop(0.5,'#2d64a0'); bg.addColorStop(1,'#1f4a7a');
-  ctx.fillStyle=bg; ctx.beginPath(); ctx.moveTo(28,0); ctx.quadraticCurveTo(22,-11,4,-10); ctx.quadraticCurveTo(-18,-8,-26,0); ctx.quadraticCurveTo(-18,8,4,10); ctx.quadraticCurveTo(22,11,28,0); ctx.fill(); // Körper
-  ctx.strokeStyle='#1d4670'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.beginPath();                            // Kopflappen nach vorn
+  const bg=ctx.createLinearGradient(0,-11,0,11); bg.addColorStop(0,'#2a1870'); bg.addColorStop(0.5,'#4a2aa8'); bg.addColorStop(1,'#2a1870');
+  ctx.fillStyle=bg; ctx.beginPath(); ctx.moveTo(28,0); ctx.quadraticCurveTo(22,-11,4,-10); ctx.quadraticCurveTo(-18,-8,-26,0); ctx.quadraticCurveTo(-18,8,4,10); ctx.quadraticCurveTo(22,11,28,0); ctx.fill();
+  ctx.strokeStyle='#5a3ac8'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.beginPath();
   ctx.moveTo(24,-6); ctx.bezierCurveTo(34,-9,39,-7,36,-2); ctx.moveTo(24,6); ctx.bezierCurveTo(34,9,39,7,36,2); ctx.stroke();
-  ctx.fillStyle='#fff'; for(const s of [-1,1]){ ctx.beginPath(); ctx.arc(25,s*8.5,1.8,0,TAU); ctx.fill(); }
+  ctx.fillStyle='#bff9ff'; for(const s of [-1,1]){ ctx.beginPath(); ctx.arc(25,s*8.5,2,0,TAU); ctx.fill(); }
   ctx.restore();
 }
-function drawMantaRing(rx,ry,r,half,t,under){
+function drawMantaRing(rx,ry,r,half,t,nova){
   if(r.hit && r.fx<=0) return;
-  const a0=half<0?Math.PI/2:-Math.PI/2, a1=a0+Math.PI, wob=under?1+0.05*Math.sin(t/220+r.x):1;
-  const sc=r.hit?1+(1-r.fx)*0.7:r.fx<0?0.85:1, rw=17*sc*wob, rh=(MANTA_RING+2)*sc, col=r.fx<0?'#c8d4dc':r.col;
+  const a0=half<0?Math.PI/2:-Math.PI/2, a1=a0+Math.PI;
+  const sc=r.hit?1+(1-r.fx)*0.7:r.fx<0?0.85:1, rw=17*sc, rh=(MANTA_RING+2)*sc, col=r.fx<0?'#8a8aa8':r.col;
   ctx.save(); ctx.globalAlpha = r.hit ? r.fx : r.fx<0 ? 0.35 : (half<0?0.8:1);
-  ctx.globalCompositeOperation='screen'; ctx.lineWidth=18; ctx.strokeStyle=rgba(col,0.25); ctx.beginPath(); ctx.ellipse(rx,ry,rw,rh,0,a0,a1); ctx.stroke(); // Leuchten
+  ctx.globalCompositeOperation='screen'; ctx.lineWidth=22; ctx.strokeStyle=rgba(nova?'#ffe36b':col,0.28); ctx.beginPath(); ctx.ellipse(rx,ry,rw,rh,0,a0,a1); ctx.stroke(); // Neon-Leuchten
+  ctx.lineWidth=11; ctx.strokeStyle=rgba(col,0.4); ctx.stroke();
   ctx.globalCompositeOperation='source-over';
-  const g=ctx.createLinearGradient(0,ry-rh,0,ry+rh); g.addColorStop(0,mixHex(col,'#ffffff',0.5)); g.addColorStop(0.5,col); g.addColorStop(1,mixHex(col,'#000000',0.3));
-  ctx.lineWidth=7; ctx.strokeStyle=g; ctx.beginPath(); ctx.ellipse(rx,ry,rw,rh,0,a0,a1); ctx.stroke();
-  ctx.lineWidth=1.8; ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.ellipse(rx-1.5,ry-1,rw-2.5,rh-2.5,0,a0,a1); ctx.stroke();
-  if(half>0 && !r.hit && r.fx>=0){ ctx.fillStyle='#ffffff';                                                  // kreisende Funken
-    for(let k=0;k<3;k++){ const an=t/450+k*TAU/3; if(Math.cos(an)<0) continue; drawSpark(rx+Math.cos(an)*rw, ry+Math.sin(an)*rh, 3.5+Math.sin(t/110+k)*1.2); } }
+  const g=ctx.createLinearGradient(0,ry-rh,0,ry+rh); g.addColorStop(0,mixHex(col,'#ffffff',0.55)); g.addColorStop(0.5,col); g.addColorStop(1,mixHex(col,'#000000',0.2));
+  ctx.lineWidth=6; ctx.strokeStyle=g; ctx.beginPath(); ctx.ellipse(rx,ry,rw,rh,0,a0,a1); ctx.stroke();
+  ctx.lineWidth=1.8; ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.beginPath(); ctx.ellipse(rx-1.5,ry-1,rw-2.5,rh-2.5,0,a0,a1); ctx.stroke();
+  if(half>0 && !r.hit && r.fx>=0){ ctx.fillStyle='#ffffff';
+    for(let k=0;k<3;k++){ const an=t/400+k*TAU/3; if(Math.cos(an)<0) continue; drawSpark(rx+Math.cos(an)*rw, ry+Math.sin(an)*rh, 3.5+Math.sin(t/110+k)*1.2); } }
   ctx.restore();
 }
+function drawAsteroid(x,y,r,rot,seed){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
+  const g=ctx.createRadialGradient(-r*0.3,-r*0.3,2,0,0,r*1.1); g.addColorStop(0,'#b8a38c'); g.addColorStop(1,'#4a3a32');
+  ctx.fillStyle=g; ctx.beginPath(); for(let k=0;k<9;k++){ const an=k*TAU/9, rr=r*(0.78+hash01(seed+k)*0.3); ctx.lineTo(Math.cos(an)*rr, Math.sin(an)*rr); } ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(255,200,150,.35)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle='rgba(40,28,24,.55)'; for(let k=0;k<3;k++){ ctx.beginPath(); ctx.arc((hash01(seed+k*7)-0.5)*r, (hash01(seed+k*11)-0.5)*r, r*(0.12+hash01(seed+k)*0.12), 0, TAU); ctx.fill(); }
+  ctx.restore();
+}
+// Sternenfeld: feste Positionen (deterministisch), drei Ebenen
+const GAL_STARS=Array.from({length:110},(_,i)=>({x:hash01(i*1.7+3), y:hash01(i*2.3+11), l:i%3, tw:hash01(i*5.1)*TAU}));
 function drawMantaScene(){
-  const b=bonus, p=b.p, t=perfNow(), Z=mantaZoom(), VW=W/Z, VH=H/Z;
-  // Oberfläche so legen, dass der höchste Luftring (≈ 310 über dem Wasser) unter dem HUD und der Grund (330 tief) im Bild ist
-  const camX=p.x-VW*0.25, camY=-Math.max(310+80/Z, VH-380), X=x=>x-camX, Y=y=>y-camY, sy=Y(0), fy=Y(MANTA_FLOOR+30);
+  const b=bonus, p=b.p, t=perfNow(), Z=mantaZoom(), VW=W/Z, VH=H/Z, camX=p.x-VW*0.22, X=x=>x-camX, wf=galWarp(b.t), sp=mantaSpeed(b.t);
+  const nova=galEventAt(b.t)?.k==='nova';
   ctx.save(); ctx.scale(Z,Z);
-  // --- Himmel, Sonne mit Strahlen, Regenbogen, Wolken, Inseln, Möwen
-  const sg=ctx.createLinearGradient(0,0,0,sy); sg.addColorStop(0,'#38b8f2'); sg.addColorStop(0.55,'#8fe0ff'); sg.addColorStop(1,'#e2faff');
-  ctx.fillStyle=sg; ctx.fillRect(0,0,VW,sy+4);
-  const sunX=VW*0.74, sunY=sy*0.34;
-  ctx.save(); const gl=ctx.createRadialGradient(sunX,sunY,10,sunX,sunY,250); gl.addColorStop(0,'rgba(255,240,170,.7)'); gl.addColorStop(1,'rgba(255,240,170,0)');
-  ctx.fillStyle=gl; ctx.fillRect(0,0,VW,sy); ctx.fillStyle='#fff8d6'; ctx.beginPath(); ctx.arc(sunX,sunY,40,0,TAU); ctx.fill();
-  ctx.globalCompositeOperation='screen'; ctx.globalAlpha=0.11; ctx.fillStyle='#ffe89a';
-  for(let i=0;i<10;i++){ ctx.save(); ctx.translate(sunX,sunY); ctx.rotate(i/10*TAU+t/9000); ctx.fillRect(0,-6,800,12); ctx.restore(); }
+  // Weltraum
+  const sg=ctx.createLinearGradient(0,0,0,VH); sg.addColorStop(0,'#06021a'); sg.addColorStop(0.55,'#130a3c'); sg.addColorStop(1,'#260d52');
+  ctx.fillStyle=sg; ctx.fillRect(0,0,VW,VH);
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  for(const [par,col,fx,fy,r] of [[0.02,'#ff4ad0',0.3,0.28,280],[0.035,'#2ad0ff',0.95,0.62,320],[0.05,'#8a5cff',0.55,0.88,260],[0.028,'#ff9a3a',1.45,0.2,220]]){
+    const span=VW*2.4, nx=((fx*VW*1.6-camX*par)%span+span)%span-VW*0.6, ny=fy*VH+Math.sin(t/3000+fx)*12;
+    const rg=ctx.createRadialGradient(nx,ny,10,nx,ny,r); rg.addColorStop(0,rgba(col,nova?0.45:0.3)); rg.addColorStop(1,rgba(col,0)); ctx.fillStyle=rg; ctx.fillRect(nx-r,ny-r,2*r,2*r); }
+  // ferne Spiralgalaxie
+  { const span=VW*3, gx=((VW*0.7-camX*0.015)%span+span)%span-VW*0.5, gy=VH*0.2;
+    const gl=ctx.createRadialGradient(gx,gy,2,gx,gy,60); gl.addColorStop(0,'rgba(255,240,220,.6)'); gl.addColorStop(1,'rgba(160,120,255,0)'); ctx.fillStyle=gl; ctx.beginPath(); ctx.ellipse(gx,gy,70,30,-0.3,0,TAU); ctx.fill();
+    ctx.fillStyle='rgba(220,210,255,.7)';
+    for(let arm=0;arm<2;arm++) for(let i=0;i<60;i++){ const a=i*0.16+arm*Math.PI+t/8000, rr=i*1.1; const ax=Math.cos(a)*rr, ay=Math.sin(a)*rr*0.42;
+      ctx.fillRect(gx+ax*Math.cos(-0.3)-ay*Math.sin(-0.3), gy+ax*Math.sin(-0.3)+ay*Math.cos(-0.3), 1.4, 1.4); } }
   ctx.restore();
-  const ra=0.22*b.rainbowA+0.5*b.rainbowFlash;
-  if(ra>0.01){ const R=Math.min(VW*0.62,sy*0.9), lw=R*0.04, cols=['#ff4a4a','#ff9a3a','#ffe14a','#4ae06a','#4ab8ff','#6a5cff','#b45cff'];
-    ctx.save(); ctx.beginPath(); ctx.rect(0,0,VW,sy); ctx.clip(); ctx.globalAlpha=ra; ctx.lineWidth=lw;
-    cols.forEach((c,i)=>{ ctx.strokeStyle=c; ctx.beginPath(); ctx.arc(VW*0.42,sy+20,R-i*lw,Math.PI,0); ctx.stroke(); }); ctx.restore(); }
-  for(let i=0;i<5;i++){ const span=VW*1.7, cx=((i*VW*0.41-camX*0.05+t*0.006)%span+span)%span-VW*0.3; drawPuffCloud(cx, sy*(0.14+0.11*(i%3)), 0.75+0.25*((i*7)%3)/2); }
-  { const span=VW*1.6; ctx.fillStyle='#8ccfe0';                                                              // ferne Inseln im Dunst
-    for(let i=0;i<3;i++){ const bx=((i*VW*0.62-camX*0.04)%span+span)%span-VW*0.3; ctx.beginPath(); ctx.ellipse(bx,sy,70+i*14,16+i*4,0,Math.PI,0); ctx.fill(); }
-    const span2=VW*2.1, ix=((VW*0.65-camX*0.1)%span2+span2)%span2-VW*0.45;                                    // nahe Insel mit Strand und Palmen
-    ctx.fillStyle='#f0dca0'; ctx.beginPath(); ctx.ellipse(ix,sy+1,110,14,0,Math.PI,0); ctx.fill();
-    ctx.fillStyle='#2f9a6a'; ctx.beginPath(); ctx.ellipse(ix-6,sy-2,88,26,0,Math.PI,0); ctx.fill();
-    ctx.fillStyle='#3cb37a'; ctx.beginPath(); ctx.ellipse(ix-20,sy-10,46,20,0,Math.PI,0); ctx.fill();
-    drawPalm(ix+18,sy-14,62,'#2e8a4e',t); drawPalm(ix-30,sy-20,48,'#3aa860',t+500); }
-  ctx.save(); ctx.strokeStyle='rgba(40,60,80,.55)'; ctx.lineWidth=2; ctx.lineCap='round';
-  for(let i=0;i<3;i++){ const gx=((t/38+i*210)%(VW+160))-80, gy=sy*0.3+i*26+Math.sin(t/500+i)*6, w=Math.sin(t/120+i)*3;
-    ctx.beginPath(); ctx.moveTo(gx-9,gy+w*0.3); ctx.quadraticCurveTo(gx-4,gy-5-w,gx,gy); ctx.quadraticCurveTo(gx+4,gy-5-w,gx+9,gy+w*0.3); ctx.stroke(); } ctx.restore();
-  // --- Wasser mit Wellen-Oberfläche
-  const surfPts=[]; for(let s=-10;s<=VW+10;s+=8) surfPts.push([s, sy+mantaSurf(s+camX,t)]);
-  const wg=ctx.createLinearGradient(0,sy,0,VH); wg.addColorStop(0,'#4ddbe9'); wg.addColorStop(0.16,'#1fb6d6'); wg.addColorStop(0.55,'#0a7fb0'); wg.addColorStop(1,'#064d78');
-  ctx.fillStyle=wg; ctx.beginPath(); ctx.moveTo(-10,VH+10); for(const q of surfPts) ctx.lineTo(q[0],q[1]); ctx.lineTo(VW+10,VH+10); ctx.closePath(); ctx.fill();
-  ctx.save(); ctx.globalCompositeOperation='screen';                                                           // Lichtstrahlen von oben
-  for(let i=0;i<6;i++){ const bx=((i*VW*0.23-camX*0.15+t/40)%(VW*1.4)+VW*1.4)%(VW*1.4)-VW*0.2, w=30+(i%3)*18;
-    const rg=ctx.createLinearGradient(0,sy,0,VH); rg.addColorStop(0,'rgba(235,253,255,'+(0.16+0.05*Math.sin(t/900+i))+')'); rg.addColorStop(1,'rgba(235,253,255,0)');
-    ctx.fillStyle=rg; ctx.beginPath(); ctx.moveTo(bx,sy); ctx.lineTo(bx+w,sy); ctx.lineTo(bx+w+120,VH); ctx.lineTo(bx+70,VH); ctx.closePath(); ctx.fill(); }
-  ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.08)';                                                     // Lichtnetz (Kaustik) unter der Oberfläche
-  for(let k=0;k<6;k++){ ctx.beginPath(); for(let s=0;s<=VW;s+=12){ const yy=sy+18+k*20+Math.sin((s+camX*0.9)/38+t/650+k*1.7)*7+Math.sin((s+camX*0.9)/15-t/420)*2.5; s?ctx.lineTo(s,yy):ctx.moveTo(s,yy); } ctx.stroke(); }
+  // Planet mit Ring + Mond
+  { const span=VW*2.6, px2=((VW*1.1-camX*0.1)%span+span)%span-VW*0.5, py2=VH*0.72, R=72;
+    ctx.save(); ctx.strokeStyle='rgba(255,210,160,.55)'; ctx.lineWidth=7; ctx.beginPath(); ctx.ellipse(px2,py2,R*1.7,R*0.38,-0.25,Math.PI,TAU); ctx.stroke();
+    const pg=ctx.createRadialGradient(px2-R*0.35,py2-R*0.35,6,px2,py2,R); pg.addColorStop(0,'#ffcf9a'); pg.addColorStop(0.6,'#e0607a'); pg.addColorStop(1,'#5a1f5a');
+    ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(px2,py2,R,0,TAU); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.lineWidth=6; for(let k=-2;k<=2;k++){ ctx.beginPath(); ctx.ellipse(px2,py2+k*20,R*Math.sqrt(1-Math.min(0.95,(k*20/R)**2)),5,-0.25,0,TAU); ctx.stroke(); }
+    ctx.strokeStyle='rgba(255,220,170,.8)'; ctx.lineWidth=7; ctx.beginPath(); ctx.ellipse(px2,py2,R*1.7,R*0.38,-0.25,0,Math.PI); ctx.stroke(); ctx.restore();
+    const span2=VW*1.9, mx=((VW*0.35-camX*0.2)%span2+span2)%span2-VW*0.3, my=VH*0.32;
+    const mg=ctx.createRadialGradient(mx-8,my-8,2,mx,my,24); mg.addColorStop(0,'#d8f0ff'); mg.addColorStop(1,'#4a6a9a'); ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(mx,my,24,0,TAU); ctx.fill(); }
+  // Supernova im Finale: explodierender Stern mit Druckwellen
+  const nv=galEventAt(b.t); if(nv && nv.k==='nova'){ const u=b.t-nv.t0, nx=VW*0.72, ny=VH*0.3, a=clamp(u/0.5,0,1);
+    ctx.save(); ctx.globalCompositeOperation='screen';
+    const cg=ctx.createRadialGradient(nx,ny,4,nx,ny,180+Math.sin(t/120)*12); cg.addColorStop(0,rgba('#ffffff',0.95*a)); cg.addColorStop(0.15,rgba('#ffe36b',0.7*a)); cg.addColorStop(0.5,rgba('#ff7ad8',0.3*a)); cg.addColorStop(1,'rgba(255,122,216,0)');
+    ctx.fillStyle=cg; ctx.fillRect(nx-200,ny-200,400,400);
+    for(let k=0;k<3;k++){ const w=((u*0.7+k/3)%1), rr=40+w*VW*0.9; ctx.globalAlpha=a*(1-w)*0.6; ctx.strokeStyle=k%2?'#7ff6ff':'#ffe36b'; ctx.lineWidth=6*(1-w)+1; ctx.beginPath(); ctx.arc(nx,ny,rr,0,TAU); ctx.stroke(); }
+    ctx.globalAlpha=a*0.35; ctx.fillStyle='#fff4c8'; for(let i=0;i<12;i++){ ctx.save(); ctx.translate(nx,ny); ctx.rotate(i/12*TAU+t/4000); ctx.fillRect(0,-2,VW,4); ctx.restore(); }
+    ctx.restore(); }
+  // Sterne mit Tempo-Streifen (im Warp lang gezogen)
+  ctx.save();
+  for(const s of GAL_STARS){ const par=[0.06,0.25,0.7][s.l], span=VW+40, x=((s.x*span*3-camX*par)%span+span)%span-20, y=s.y*VH;
+    const len=s.l===0?0:sp*par*0.05*(1+5*wf), tw=0.45+0.55*Math.abs(Math.sin(t/600+s.tw));
+    if(len<2){ ctx.globalAlpha=tw; ctx.fillStyle='#fff'; ctx.fillRect(x,y,s.l+1,s.l+1); }
+    else { ctx.lineCap='round'; ctx.globalAlpha=tw*(s.l===2?0.35:0.22); ctx.strokeStyle=s.l===2?'#dfe8ff':'#b9c8ff'; ctx.lineWidth=s.l===2?1.4:0.9;   // blasser Schweif …
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+len,y); ctx.stroke();
+      ctx.globalAlpha=tw; ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(x,y,s.l===2?1.6:1,0,TAU); ctx.fill(); } }                         // … heller Stern vorn
   ctx.restore();
-  // ferne Riffe im Dunst (Tiefe)
-  for(const [par,col,base,amp] of [[0.3,'rgba(22,118,165,.55)',95,70],[0.55,'rgba(17,98,140,.75)',50,45]]){
-    ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(0,VH);
-    for(let s=0;s<=VW+12;s+=12){ const n=vnoise((s+camX*par)/80+par*13); ctx.lineTo(s, fy-base*0.4-n*amp); } ctx.lineTo(VW,VH); ctx.closePath(); ctx.fill(); }
-  // Fischschwärme
-  for(let sIdx=0;sIdx<2;sIdx++){ const span=VW*1.8, bxs=((sIdx*VW*0.95-camX*0.55-t*0.045*(1+sIdx*0.4))%span+span)%span-VW*0.35;
-    const bys=sy+80+sIdx*95+Math.sin(t/1100+sIdx)*14, c1=sIdx?'#4ab8ff':'#ffd23a', c2=sIdx?'#ffffff':'#ff8a2b';
-    for(let i=0;i<9;i++){ const fx=bxs+(i%3)*16+Math.sin(i*1.7)*7, fy2=bys+Math.floor(i/3)*11+Math.sin(t/260+i)*2.5;
-      ctx.fillStyle=c1; ctx.beginPath(); ctx.ellipse(fx,fy2,6.5,2.8,0,0,TAU); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(fx+5,fy2); ctx.lineTo(fx+10,fy2-3.2); ctx.lineTo(fx+10,fy2+3.2); ctx.closePath(); ctx.fill();
-      ctx.fillStyle=c2; ctx.fillRect(fx-1,fy2-2.6,1.6,5.2); } }
-  // Sandgrund mit Rippeln, Kaustik-Flecken, Seesternen
-  const sandY=s=>fy+Math.sin((s+camX)/90)*8;
-  const sdg=ctx.createLinearGradient(0,fy-10,0,VH); sdg.addColorStop(0,'#f4e2ad'); sdg.addColorStop(1,'#d7bb7c');
-  ctx.fillStyle=sdg; ctx.beginPath(); ctx.moveTo(0,VH+10); for(let s=0;s<=VW+10;s+=10) ctx.lineTo(s,sandY(s)); ctx.lineTo(VW+10,VH+10); ctx.closePath(); ctx.fill();
-  ctx.save(); ctx.strokeStyle='rgba(255,246,210,.6)'; ctx.lineWidth=1.5;
-  for(let k=1;k<=3;k++){ ctx.beginPath(); for(let s=0;s<=VW;s+=10){ const yy=sandY(s)+k*12+Math.sin((s+camX)/26+k)*2.5; s?ctx.lineTo(s,yy):ctx.moveTo(s,yy); } ctx.stroke(); }
-  ctx.globalCompositeOperation='screen'; ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=2;
-  for(let i=0;i<14;i++){ const cx=((i*67-camX*0.95+Math.sin(t/700+i)*10)%(VW+60)+VW+60)%(VW+60)-30, cy=sandY(cx)+6+(i%3)*10;
-    ctx.beginPath(); ctx.moveTo(cx-10,cy); ctx.quadraticCurveTo(cx,cy-4+Math.sin(t/300+i)*3,cx+10,cy); ctx.stroke(); }
+  // Warp-Tunnel: Lichtstreifen und farbiger Rand
+  if(wf>0.02){ ctx.save(); ctx.globalCompositeOperation='screen';
+    for(let i=0;i<26;i++){ const y=hash01(i*9.1)*VH, x=((hash01(i*4.3)*VW*2 - t*1.6*(1+hash01(i)))%(VW*1.6)+VW*1.6)%(VW*1.6)-VW*0.3;
+      ctx.strokeStyle=rgba(i%3?'#7ff6ff':'#ff7ad8',0.5*wf); ctx.lineWidth=1.5+hash01(i*2)*2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+120+hash01(i*7)*160,y); ctx.stroke(); }
+    const vg=ctx.createLinearGradient(0,0,0,VH); vg.addColorStop(0,rgba('#2ad0ff',0.25*wf)); vg.addColorStop(0.2,'rgba(0,0,0,0)'); vg.addColorStop(0.8,'rgba(0,0,0,0)'); vg.addColorStop(1,rgba('#ff4ad0',0.25*wf));
+    ctx.fillStyle=vg; ctx.fillRect(0,0,VW,VH); ctx.restore(); }
+  // Regenbogen nach einer Kette
+  const ra=0.55*b.rainbowFlash;                                                         // im All nur kurz aufleuchten
+  if(ra>0.01){ const R=Math.min(VW*0.62,VH*0.45), lw=R*0.04, cols=['#ff4a4a','#ff9a3a','#ffe14a','#4ae06a','#4ab8ff','#6a5cff','#b45cff'];
+    ctx.save(); ctx.globalCompositeOperation='screen'; ctx.globalAlpha=ra; ctx.lineWidth=lw;
+    cols.forEach((c,i)=>{ ctx.strokeStyle=c; ctx.beginPath(); ctx.arc(VW*0.5,VH*0.62,R-i*lw,Math.PI,0); ctx.stroke(); }); ctx.restore(); }
+  // Spielobjekte
+  const Y=y=>y;
+  for(const r of b.rings){ const rx=X(r.x); if(rx>-40 && rx<VW+40) drawMantaRing(rx,r.y,r,-1,t,nova); }
+  ctx.save(); ctx.globalCompositeOperation='screen';
+  for(const e of b.ents){ const ex=X(e.x); if(ex<-20||ex>VW+20) continue; const pul=1+0.25*Math.sin(t/120+e.x);
+    const dg=ctx.createRadialGradient(ex,e.y,0,ex,e.y,12*pul); dg.addColorStop(0,'rgba(255,240,170,.75)'); dg.addColorStop(1,'rgba(255,240,170,0)'); ctx.fillStyle=dg; ctx.fillRect(ex-13,e.y-13,26,26);
+    ctx.fillStyle=nova?'#ffe36b':'#fff6c8'; drawSpark(ex,e.y,6*pul); }
   ctx.restore();
-  // Schatten des Mantas auf dem Grund (zeigt, wie tief er ist)
-  { const hgt=MANTA_FLOOR-p.y, a=0.28*clamp(1-hgt/650,0.15,1), w=46*(0.6+0.4*clamp(1-hgt/650,0,1));
-    ctx.fillStyle='rgba(40,60,80,'+a+')'; ctx.beginPath(); ctx.ellipse(X(p.x),sandY(X(p.x))+4,w,6,0,0,TAU); ctx.fill(); }
-  // Korallen, Seegras, Anemonen, Seesterne
-  const cols=['#ff6b8a','#ffb03a','#c86bff','#ff8a5a','#3ddc84','#ff5ac8'];
-  for(let k=Math.floor(camX/52)-1;k<(camX+VW)/52+1;k++){ const cx=X(k*52+hash01(k)*26), base=sandY(cx)+3, hh=22+hash01(k+3)*42, col=cols[Math.floor(hash01(k+11)*6)], kind=Math.floor(hash01(k+5)*5), sw=Math.sin(t/650+k)*4;
-    ctx.lineCap='round';
-    if(kind===0){ ctx.strokeStyle=col; ctx.lineWidth=6; ctx.beginPath(); for(let j=-1;j<=1;j++){ ctx.moveTo(cx,base); ctx.quadraticCurveTo(cx+j*10,base-hh*0.6,cx+j*16+sw*0.3,base-hh); } ctx.stroke();
-      ctx.strokeStyle=mixHex(col,'#ffffff',0.45); ctx.lineWidth=2; ctx.beginPath(); for(let j=-1;j<=1;j++){ ctx.moveTo(cx+j*10,base-hh*0.6); ctx.lineTo(cx+j*16+sw*0.3,base-hh); } ctx.stroke();
-      ctx.fillStyle=mixHex(col,'#ffffff',0.3); for(let j=-1;j<=1;j++){ ctx.beginPath(); ctx.arc(cx+j*16+sw*0.3,base-hh,4,0,TAU); ctx.fill(); } }
-    else if(kind===1){ ctx.fillStyle=rgba(col,0.85); ctx.beginPath(); ctx.ellipse(cx,base,hh*0.45,hh*0.7,0,Math.PI,0); ctx.fill();
-      ctx.strokeStyle=mixHex(col,'#5a1030',0.35); ctx.lineWidth=1; ctx.beginPath(); for(let j=-2;j<=2;j++){ ctx.moveTo(cx,base); ctx.lineTo(cx+j*hh*0.2,base-hh*0.65+Math.abs(j)*hh*0.1); } ctx.stroke(); }
-    else if(kind===2){ ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(cx,base,hh*0.35,hh*0.28,0,Math.PI,0); ctx.fill();
-      ctx.strokeStyle=mixHex(col,'#ffffff',0.4); ctx.lineWidth=1.4; ctx.beginPath(); for(let j=0;j<3;j++){ ctx.moveTo(cx-hh*0.25,base-3-j*5); ctx.quadraticCurveTo(cx,base-8-j*5,cx+hh*0.25,base-3-j*5); } ctx.stroke(); }
-    else if(kind===3){ ctx.strokeStyle=hash01(k+2)>0.5?'#2fae6a':'#4cc47a'; ctx.lineWidth=3.5; ctx.beginPath();
-      for(let j=0;j<4;j++){ const bx2=cx-8+j*5; ctx.moveTo(bx2,base); ctx.quadraticCurveTo(bx2+sw,base-hh*0.6,bx2+sw*1.8,base-hh*1.1); } ctx.stroke(); }
-    else { ctx.fillStyle='#ff9ec4'; ctx.strokeStyle='#ff6ba6'; ctx.lineWidth=2.4; ctx.beginPath();
-      for(let j=0;j<7;j++){ const an=-Math.PI*0.85+j*Math.PI*0.7/6; ctx.moveTo(cx,base-6); ctx.quadraticCurveTo(cx+Math.cos(an)*10+sw,base-6+Math.sin(an)*10,cx+Math.cos(an)*16+sw*1.5,base-6+Math.sin(an)*16); } ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(cx,base-3,7,5,0,0,TAU); ctx.fill(); }
-    if(hash01(k+31)>0.8){ const stx=cx+20, sty=sandY(stx)+8; ctx.fillStyle='#ff8a3a'; drawSpark(stx,sty,6); }
-  }
-  // Plankton
-  ctx.save(); ctx.fillStyle='rgba(235,255,255,.5)'; for(let i=0;i<26;i++){ const px2=((i*89-camX*0.7)%(VW+20)+VW+20)%(VW+20)-10, py2=sy+20+((i*53+t/60)%(fy-sy-30)); ctx.beginPath(); ctx.arc(px2,py2,1.2,0,TAU); ctx.fill(); } ctx.restore();
-  // --- hintere Ringhälften, Perlen, Spieler, vordere Ringhälften
-  for(const r of b.rings){ const rx=X(r.x); if(rx>-40 && rx<VW+40) drawMantaRing(rx,Y(r.y),r,-1,t,r.y>0); }
-  for(const e of b.ents){ const ex=X(e.x), ey=Y(e.y); if(ex<-20||ex>VW+20) continue;
-    const gg=ctx.createRadialGradient(ex-2,ey-2,1,ex,ey,10); gg.addColorStop(0,'#ffffff'); gg.addColorStop(1,'#ffc8ea'); ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(ex,ey,7.5,0,TAU); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(ex-2.5,ey-2.5,2,0,TAU); ctx.fill(); }
-  drawTrailDots(save.trail, b.trail.map(q=>({x:X(q.x)-20, y:Y(q.y)})), {foam:'#e8fdff'});
-  const air=p.y<0, rot=clamp(p.vy/1400,-0.35,0.35), px=X(p.x), py=Y(p.y);
-  ctx.save(); ctx.translate(px,py); ctx.rotate(rot);
-  drawManta(0,4,1.35,t,0,air);
+  for(const s of b.stars){ const q=galStarPos(s,b.t), sx3=X(q.x); if(sx3<-80||sx3>VW+80||q.y<-60||q.y>VH+60) continue;
+    ctx.save(); const tl=ctx.createLinearGradient(sx3,q.y,sx3-s.vx*0.45,q.y-s.vy*0.45); tl.addColorStop(0,'rgba(255,236,150,.9)'); tl.addColorStop(1,'rgba(255,236,150,0)');
+    ctx.strokeStyle=tl; ctx.lineWidth=5; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(sx3,q.y); ctx.lineTo(sx3-s.vx*0.45,q.y-s.vy*0.45); ctx.stroke();
+    ctx.fillStyle='#fff3a8'; drawSpark(sx3,q.y,10+Math.sin(t/90)*2); ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(sx3,q.y,3.5,0,TAU); ctx.fill(); ctx.restore(); }
+  for(const r of b.rocks){ const rx=X(r.x); if(rx<-50||rx>VW+50) continue; ctx.save(); if(r.hit) ctx.globalAlpha=0.4; drawAsteroid(rx,r.y,r.r,r.rot,r.seed); ctx.restore(); }
+  // Manta mit Reiter
+  ctx.save(); ctx.globalCompositeOperation='screen'; for(const q of b.parts){ if(q.kind!=='glit') continue; ctx.globalAlpha=clamp(q.life/q.max,0,1); ctx.fillStyle=q.col; ctx.beginPath(); ctx.arc(X(q.x),q.y,q.r,0,TAU); ctx.fill(); } ctx.restore();
+  drawTrailDots(save.trail, b.trail.map(q=>({x:X(q.x)-24, y:q.y})), {foam:'#c9e6ff'});
+  const rot=clamp(p.vy/1400,-0.3,0.3), px=X(p.x);
+  ctx.save(); ctx.translate(px,p.y); ctx.rotate(rot); if(b.hurtT>0) ctx.globalAlpha=0.45+0.4*Math.sin(t/60);
+  drawManta(0,4,1.35,t,0,true);
   ctx.translate(-8,-6); ctx.scale(0.66,0.66);
-  drawCharacter(BOARDS[save.board]||BOARDS.wood, SURFERS[save.surfer]||SURFERS.kai, {c:b.holding?1:0.5, t:0, g:0, u:air&&p.vy<0?0.6:0}, t);
+  drawCharacter(BOARDS[save.board]||BOARDS.wood, SURFERS[save.surfer]||SURFERS.kai, {c:b.holding?0.3:0.8, t:0, g:0, u:b.ending>0?1:0}, t);
   ctx.restore();
-  for(const r of b.rings){ const rx=X(r.x); if(rx>-40 && rx<VW+40) drawMantaRing(rx,Y(r.y),r,1,t,r.y>0); }
-  // Gischt-Kante der Oberfläche (über allem Unterwasser)
-  ctx.save(); ctx.beginPath(); surfPts.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));
-  ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=8; ctx.stroke(); ctx.strokeStyle='rgba(255,255,255,.92)'; ctx.lineWidth=2.6; ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,.75)'; for(let i=0;i<18;i++){ const fx3=((i*53-camX)%(VW+20)+VW+20)%(VW+20)-10; ctx.beginPath(); ctx.arc(fx3,sy+mantaSurf(fx3+camX,t)+2,1.4+(i%3)*0.6,0,TAU); ctx.fill(); }
-  ctx.restore();
-  // Partikel
-  ctx.save(); for(const q of b.parts){ const a=clamp(q.life/q.max,0,1), qx=X(q.x), qy=Y(q.y); ctx.globalAlpha=a;
-    if(q.kind==='drop'){ ctx.fillStyle=q.col; ctx.beginPath(); ctx.arc(qx,qy,q.r,0,TAU); ctx.fill(); }
-    else if(q.kind==='bubble'){ ctx.strokeStyle='rgba(235,252,255,.85)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.arc(qx,qy,q.r,0,TAU); ctx.stroke();
-      ctx.fillStyle='rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(qx-q.r*0.35,qy-q.r*0.35,q.r*0.3,0,TAU); ctx.fill(); }
-    else if(q.kind==='spark'){ ctx.globalCompositeOperation='screen'; ctx.fillStyle=q.col; drawSpark(qx,qy,q.r*(0.5+0.5*a)); ctx.globalCompositeOperation='source-over'; }
-    else if(q.kind==='ripple'){ ctx.strokeStyle='rgba(255,255,255,.85)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(qx,sy+1,q.r+(1-a)*60,4+(1-a)*5,0,0,TAU); ctx.stroke(); } }
-  ctx.restore();
-  // kommende Ringe am rechten Rand ankündigen: Farbe + Höhe
+  for(const r of b.rings){ const rx=X(r.x); if(rx>-40 && rx<VW+40) drawMantaRing(rx,r.y,r,1,t,nova); }
+  ctx.save(); for(const q of b.parts){ if(q.kind!=='spark') continue; ctx.globalAlpha=clamp(q.life/q.max,0,1); ctx.globalCompositeOperation='screen'; ctx.fillStyle=q.col; drawSpark(X(q.x),q.y,q.r*(0.5+0.5*q.life/q.max)); } ctx.restore();
+  // kommende Ringe/Asteroiden am rechten Rand ankündigen
   let shown=0;
-  for(const r of b.rings){ if(r.passed) continue; const rx=X(r.x), tta=(r.x-p.x)/mantaSpeed(b.t);
+  for(const r of b.rings){ if(r.passed) continue; const rx=X(r.x), tta=(r.x-p.x)/sp;
     if(rx<VW-6 || tta>MANTA_HINT || shown>=2) continue; shown++;
-    const k=1-tta/MANTA_HINT, yy=clamp(Y(r.y),40,VH-40);
+    const k=1-tta/MANTA_HINT, yy=clamp(r.y,40,VH-40);
     ctx.save(); ctx.globalAlpha=0.55+0.45*k; ctx.fillStyle=rgba(r.col,0.45); ctx.beginPath(); ctx.arc(VW-24,yy,20,0,TAU); ctx.fill();
     ctx.strokeStyle=r.col; ctx.lineWidth=4; ctx.beginPath(); ctx.ellipse(VW-24,yy,7,14,0,0,TAU); ctx.stroke();
     ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(VW-24,yy,20,-Math.PI/2,-Math.PI/2+TAU*k); ctx.stroke(); ctx.restore(); }
+  for(const r of b.rocks){ if(r.hit) continue; const rx=X(r.x), tta=(r.x-p.x)/sp; if(rx<VW-6 || tta>1.2) continue;
+    ctx.save(); ctx.globalAlpha=0.7; ctx.fillStyle='rgba(255,140,90,.35)'; ctx.beginPath(); ctx.arc(VW-24,clamp(r.y,40,VH-40),14,0,TAU); ctx.fill();
+    ctx.font='900 15px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#ffb36b'; ctx.fillText('!',VW-24,clamp(r.y,40,VH-40)+1); ctx.restore(); }
   drawBonusFloats(X, Y);
   ctx.restore();
 }
 function drawMantaHUD(){
   const b=bonus, bw=Math.min(160,W*0.4);
-  ctx.textAlign='left'; ctx.font='16px system-ui'; ctx.fillText('🌈', 14, 14);
-  roundRect(42,19,bw,12,6); ctx.fillStyle='rgba(0,40,70,.3)'; ctx.fill();
+  ctx.textAlign='left'; ctx.font='16px system-ui'; ctx.fillText('🌌', 14, 14);
+  roundRect(42,19,bw,12,6); ctx.fillStyle='rgba(255,255,255,.18)'; ctx.fill();
   roundRect(42,19,Math.max(10,bw*clamp(1-b.t/MANTA_TIME,0,1)),12,6); ctx.fillStyle='#ffffff'; ctx.fill();
   ctx.font='800 11px system-ui'; ctx.fillStyle='#fff'; ctx.fillText('KETTE', 14, 42);
-  for(let i=0;i<6;i++){ const c=b.chainCols[i]; ctx.beginPath(); ctx.arc(66+i*17,46.5,6,0,TAU); ctx.fillStyle=c||'rgba(0,40,70,.3)'; ctx.fill();
+  for(let i=0;i<6;i++){ const c=b.chainCols[i]; ctx.beginPath(); ctx.arc(66+i*17,46.5,6,0,TAU); ctx.fillStyle=c||'rgba(255,255,255,.12)'; ctx.fill();
     if(!c){ ctx.strokeStyle=rgba(RING_COLS[i],0.8); ctx.lineWidth=1.5; ctx.stroke(); } }
   if(b.mult>1){ ctx.font='900 14px system-ui'; ctx.fillStyle='#ffe36b'; ctx.fillText('x'+b.mult, 170, 40); }
 }
@@ -3394,17 +3364,17 @@ function drawBonusEnd(){
   if(b.newBest) lines.push(['★ Neuer Bestwert','800 13px system-ui','#ffe36b']);
   if(b.kind==='shark') lines.push(['Ausgewichen '+b.dodged+' · Perfekt '+b.perfect,'600 13px system-ui','rgba(255,255,255,.75)']);
   if(b.kind==='levi') lines.push(['Höchster Flug '+Math.round(b.maxH/10)+' m · Saubere Landungen '+b.clean,'600 13px system-ui','rgba(255,255,255,.75)']);
-  if(b.kind==='manta') lines.push(['Ringe '+b.ringsHit+'/'+b.ringsAll+' · Längste Kette '+b.bestChain,'600 13px system-ui','rgba(255,255,255,.75)']);
+  if(b.kind==='manta') lines.push(['Ringe '+b.ringsHit+'/'+b.ringsAll+' · Kette '+b.bestChain+' · 🌠 '+b.starsGot,'600 13px system-ui','rgba(255,255,255,.75)']);
   if(b.gems) lines.push(['💎 +'+b.gems+' Kristall','700 15px system-ui','#d6c4ff']);
   if(b.unlocked) lines.push(['🎉 '+K.reward.name+' freigeschaltet!','800 15px system-ui','#ffd36b']);
   else if(bonusRewardOwned(b.kind)) lines.push([K.token+' '+K.tokenName+': '+bonusTokens(b.kind)+(b.tokens?'  (+1)':''),'700 15px system-ui','#ffd36b']);
   else lines.push([K.token+' '+K.tokenName+': '+Math.min(bonusTokens(b.kind),TOKENS_NEEDED)+'/'+TOKENS_NEEDED+(b.tokens?'  (+1)':''),'700 15px system-ui','#ffd36b']);
   if(b.kind==='shark' && !b.survived) lines.push(['Halte 35 s durch – dann gibt es einen 🦷','500 12px system-ui','rgba(255,255,255,.65)']);
   if(b.kind==='levi' && !(b.ring&&b.ring.hit)) lines.push(['Tipp: Schwung bis zur 💎-Marke = Ring','500 12px system-ui','rgba(255,255,255,.65)']);
-  if(b.kind==='manta' && !b.chains) lines.push(['Tipp: Punkt am rechten Rand = nächster Ring','500 12px system-ui','rgba(255,255,255,.65)']);
+  if(b.kind==='manta' && !b.chains) lines.push(['Tipp: Der Sternenstaub zeigt die Bahn durch die Ringe','500 12px system-ui','rgba(255,255,255,.65)']);
   const ch=176+lines.length*24, cy=(H-ch)/2-20;
   const title = b.kind==='shark' ? (b.survived?'🏝 Entkommen!':'🦈 Erwischt!') : b.kind==='levi' ? ((b.ring&&b.ring.hit)?'💎 Volltreffer!':'🐉 Gelandet!')
-              : b.kind==='manta' ? (b.chains?'🌈 Super geflogen!':'🌊 Geschafft!') : '🌊 Aufgetaucht!';
+              : b.kind==='manta' ? (b.chains?'🌌 Super geflogen!':'🌌 Gelandet!') : '🌊 Aufgetaucht!';
   ctx.fillStyle='rgba(2,12,24,.6)'; ctx.fillRect(0,0,W,H);
   ctx.save(); roundRect(cx,cy,cw,ch,18); ctx.fillStyle='#0f2f4a'; ctx.fill(); ctx.strokeStyle=K.edge; ctx.lineWidth=1.5; ctx.stroke();
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
